@@ -23,16 +23,11 @@ namespace AndresRamosExamenFinal.View
 
         private async void BtnSignUp_Clicked(object sender, EventArgs e)
         {
-
             if (!EntPassword.Text.Equals(EntConfirmPassword.Text))
-            {
                 await DisplayAlert("Password mismatch", "Please check your confirm password", "Cancel");
-            }
-
             else
             {
                 var response = await ApiService.RegisterUser(EntName.Text, EntEmail.Text, EntPassword.Text, EntConfirmPassword.Text);
-
                 if (response)
                 {
                     await DisplayAlert("Hi", "Your account has been created", "Alright");
@@ -44,31 +39,21 @@ namespace AndresRamosExamenFinal.View
                     var result = "";
                     var jsonResult = Preferences.Get("errors", string.Empty);
                     Preferences.Set("errors", string.Empty);
-
                     JObject jsonParse = JObject.Parse(jsonResult);
-
                     foreach (JProperty property in jsonParse.Properties())
                     {
                         if (typeof(Newtonsoft.Json.Linq.JArray) == property.Value.GetType())
                         {
                             foreach (var value in property.Value)
-                            {
                                 result += value + "\n";
-                            }
                         }
                         else
-                        {
-                            result += property.Value.ToString();
-                        }
-
-
+                            result += property.Value.ToString();  
                     }
-
                     await DisplayAlert("Oops", result, "Cancel");
                 }
             }
         }
-
         private void BtnLogin_Clicked(object sender, EventArgs e)
         {
             Navigation.PushModalAsync(new LoginView());

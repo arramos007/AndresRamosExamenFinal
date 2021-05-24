@@ -13,7 +13,6 @@ namespace AndresRamosExamenFinal.ViewModel
     public class LoginViewModel : INotifyPropertyChanged
     {
         private string email;
-
         public string Email
         {
             get { return email; }
@@ -25,7 +24,6 @@ namespace AndresRamosExamenFinal.ViewModel
         }
 
         private string password;
-
         public string Password
         {
             get { return password; }
@@ -52,11 +50,7 @@ namespace AndresRamosExamenFinal.ViewModel
                 {
                     Application.Current.MainPage = new NavigationPage(new MainPage());
                 }
-                finally
-                {
-
-                }
-
+                finally{}
             }
             else
             {
@@ -65,11 +59,7 @@ namespace AndresRamosExamenFinal.ViewModel
                 {
                     await Application.Current.MainPage.DisplayAlert("Oops", "Something went wrong", "Cancel");
                 }
-                finally
-                {
-
-                }
-
+                finally { }
             }
         }
 
@@ -85,7 +75,5 @@ namespace AndresRamosExamenFinal.ViewModel
         }
         public ICommand Login { get; set; }
         public event PropertyChangedEventHandler PropertyChanged;
-
-
     }
 }

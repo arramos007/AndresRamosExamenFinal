@@ -1,24 +1,50 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" xmlns:local="clr-namespace:AndresRamosExamenFinal.Converter"
              x:Class="AndresRamosExamenFinal.MainPage">
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:ChangeCompleteActionTextConverter x:Key="ChangeCompletedActionTextConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Command="{Binding AddItem}" Text="Nuevo Producto"/>
+        <ToolbarItem Command="{Binding Logout}" Text="Cerrar Sesion"/>
+    </ContentPage.ToolbarItems>
+    <ContentPage.Content>
+        <StackLayout Orientation="Vertical">
+            <AbsoluteLayout x:Name="absLayout" Padding="0" HorizontalOptions="FillAndExpand" VerticalOptions="FillAndExpand">
+                <ListView  HeightRequest="{Binding Path=Height, Source={x:Reference absLayout}}" ItemsSource="{Binding GroupedProductoList}"
+                      IsGroupingEnabled="True"
+                      ItemSelected="ProductoDisplayList_ItemSelected"
+                      GroupDisplayBinding="{Binding Key}"
+                      x:Name="ProductoDisplayList">
+                    <ListView.ItemTemplate >
+                        <DataTemplate>
 
-    <StackLayout>
-        <Frame BackgroundColor="#2196F3" Padding="24" CornerRadius="0">
-            <Label Text="Sistema to Xamarin.Forms!" HorizontalTextAlignment="Center" TextColor="White" FontSize="36"/>
-        </Frame>
-        <Label Text="Start developing now" FontSize="Title" Padding="30,10,30,10"/>
-        <Label Text="Make changes to your XAML file and save to see your UI update in the running app with XAML Hot Reload. Give it a try!" FontSize="16" Padding="30,0,30,0"/>
-        <Label FontSize="16" Padding="30,24,30,0">
-            <Label.FormattedText>
-                <FormattedString>
-                    <FormattedString.Spans>
-                        <Span Text="Learn more at "/>
-                        <Span Text="https://aka.ms/xamarin-quickstart" FontAttributes="Bold"/>
-                    </FormattedString.Spans>
-                </FormattedString>
-            </Label.FormattedText>
-        </Label>
-    </StackLayout>
+                            <TextCell Text="{Binding nombre}">
+                                <TextCell.ContextActions>
+                                    <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.ChangeIsCompleted }"
+                                          CommandParameter="{Binding .}" Text="{Binding isCompleted, Converter={StaticResource ChangeCompletedActionTextConverter}}" />
+                                    <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.Delete }" 
+                                          CommandParameter="{Binding .}" Text="Delete" IsDestructive="True" />
+                                    <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.NoteSelectedCommand }" 
+                                          CommandParameter="{Binding .}" Text="View"  />
+                                </TextCell.ContextActions>
+                            </TextCell>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <ContentView x:Name="popupLoadingView" BackgroundColor="#C0808080" Padding="10, 0" IsVisible="{Binding IsBusy}" AbsoluteLayout.LayoutBounds="0, 0, 1, 1" AbsoluteLayout.LayoutFlags="All">
+                    <StackLayout VerticalOptions="Center" HorizontalOptions="Center">
+                        <StackLayout Orientation="Vertical" HeightRequest="150" WidthRequest="200" BackgroundColor="White">
 
+                            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" x:Name="activityIndicator" Margin="0,50,0,0" VerticalOptions="Center" HorizontalOptions="Center" Color="Black" WidthRequest="30" HeightRequest="30" ></ActivityIndicator>
+                            <Label x:Name="lblLoadingText" TextColor="Black" VerticalOptions="Center" HorizontalOptions="Center" VerticalTextAlignment="Center" Text="Loading..."></Label>
+                        </StackLayout>
+                    </StackLayout>
+                </ContentView>
+            </AbsoluteLayout>
+        </StackLayout>
+    </ContentPage.Content>
 </ContentPage>

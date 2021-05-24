@@ -15,8 +15,6 @@ using AndresRamosExamenFinal.ViewModel;
 using Xamarin.Essentials;
 using Xamarin.Forms;
 
-
-
 namespace AndresRamosExamenFinal.Data
 {
     public class ProductoDatabase
@@ -26,13 +24,9 @@ namespace AndresRamosExamenFinal.Data
         public ProductoDatabase(string dbPath)
         {
             _database = new SQLiteAsyncConnection(dbPath);
-
-            //_database.DropTableAsync<ProductoModel>().Wait();
+           // _database.DropTableAsync<ProductoModel>().Wait();
             _database.CreateTableAsync<ProductoModel>().Wait();
-
-
         }
-
         public async Task<List<ProductoModel>> GetProductoModelsAsync()
         {
             if (CrossConnectivity.Current.IsConnected)
@@ -42,54 +36,49 @@ namespace AndresRamosExamenFinal.Data
                 var storeProducto = _database.Table<ProductoModel>().Where(i => i.Store == true);
                 if (await storeProducto.CountAsync() > 0)
                 {
-
                     var producto = storeProducto.ToListAsync();
                     var productostore = JsonConvert.SerializeObject(producto).ToString();
                     JObject productoJson = JObject.Parse(productostore);
                     List<ProductoModel> listStore = new List<ProductoModel> { };
                     foreach (var row in productoJson["Result"])
                     {
-
-
                         listStore.Add(new ProductoModel
                         {
                             isCompleted = (int)row["isCompleted"],
-                            codigo_principal_producto = (string)row["codigo_principal_producto"]
+                            codigo_principal_producto = (string)row["codigo_principal_producto"],
+                            codigo_auxiliar_producto = (string)row["codigo_auxiliar_producto"],
+                            nombre = (string)row["nombre"],
+                            valor_unitario = (float)row["valor_unitario"],
+                            tipo_productos_id = (int)row["tipo_productos_id"],
+                            users_id = (int)row["users_id"]
                         });
                     }
-
                     await storeProducto.DeleteAsync();
                     await ApiService.AllStoreProducto(listStore);
-
-
-
-
                 }
-
 
                 if (await updateProducto.CountAsync() > 0)
                 {
-
-
                     var producto = updateProducto.ToListAsync();
                     var productostore = JsonConvert.SerializeObject(producto).ToString();
                     JObject productoJson = JObject.Parse(productostore);
                     List<ProductoModel> listStore = new List<ProductoModel> { };
                     foreach (var row in productoJson["Result"])
                     {
-
-
                         listStore.Add(new ProductoModel
                         {
                             id = (int)row["id"],
                             isCompleted = (int)row["isCompleted"],
-                            codigo_principal_producto = (string)row["codigo_principal_producto"]
+                            codigo_principal_producto = (string)row["codigo_principal_producto"],
+                            codigo_auxiliar_producto = (string)row["codigo_auxiliar_producto"],
+                            nombre = (string)row["nombre"],
+                            valor_unitario = (float)row["valor_unitario"],
+                            tipo_productos_id = (int)row["tipo_productos_id"],
+                            users_id = (int)row["users_id"]
                         });
                     }
                     await storeProducto.DeleteAsync();
                     await ApiService.AllUpdateProducto(listStore);
-
-
                 }
 
                 if (await deleteProducto.CountAsync() > 0)
@@ -104,9 +93,7 @@ namespace AndresRamosExamenFinal.Data
                     }
                     await deleteProducto.DeleteAsync();
                     await ApiService.AllDeleteProducto(deleteId);
-
                 }
-
 
                 var server = await ApiService.GetProductos();
                 var client = await _database.Table<ProductoModel>().ToListAsync();
@@ -124,10 +111,14 @@ namespace AndresRamosExamenFinal.Data
                 }
                 foreach (var jp in jsonParse)
                 {
-
                     var producto = new ProductoModel
                     {
                         codigo_principal_producto = (string)jp["codigo_principal_producto"],
+                        codigo_auxiliar_producto = (string)jp["codigo_auxiliar_producto"],
+                        nombre = (string)jp["nombre"],
+                        valor_unitario = (float)jp["valor_unitario"],
+                        tipo_productos_id = (int)jp["tipo_productos_id"],
+                        users_id = (int)jp["users_id"],
                         isCompleted = (int)jp["isComplete"],
                         id = (int)jp["id"],
                         created_at = (DateTime)jp["created_at"],
@@ -144,25 +135,18 @@ namespace AndresRamosExamenFinal.Data
                         await _database.UpdateAsync(producto);
                     }
                     serverId.Add((int)jp["id"]);
-
                 }
                 IEnumerable<int> res = clientId.AsQueryable().Except(serverId);
                 foreach (int id in res)
                 {
                     await DeleteProductoModelAsync(new ProductoModel { id = id });
                 }
-
-
-
             }
             return await _database.Table<ProductoModel>().Where(i => i.Delete == false).ToListAsync();
         }
 
         public async Task InitializeProducto()
         {
-
-
-
         }
         public Task<ProductoModel> GetProductoModelAsync(int id)
         {
@@ -170,7 +154,6 @@ namespace AndresRamosExamenFinal.Data
                             .Where(i => i.id == id)
                             .FirstOrDefaultAsync();
         }
-
         public async Task<int> SaveProductoModelAsync(ProductoModel note)
         {
             try
@@ -181,19 +164,15 @@ namespace AndresRamosExamenFinal.Data
                     {
                         Thread.Sleep(50);
                         var producto = await ApiService.PutProducto(note);
-
                         return await _database.UpdateAsync(producto);
-
                     }
                     else
                     {
                         note.Update = true;
-
                         note.updated_at = DateTimeOffset.Now;
                         Thread.Sleep(50);
                         return await _database.UpdateAsync(note);
                     }
-
                 }
                 else
                 {
@@ -210,16 +189,12 @@ namespace AndresRamosExamenFinal.Data
                         Thread.Sleep(50);
                         return await _database.InsertAsync(note); ;
                     }
-
                 }
             }
             catch (ArgumentOutOfRangeException outOfRange)
             {
-
                 throw;
             }
-
-
         }
 
         public async Task<int> DeleteProductoModelAsync(ProductoModel note)
@@ -242,7 +217,6 @@ namespace AndresRamosExamenFinal.Data
             }
             catch (Exception)
             {
-
                 throw;
             }
 
@@ -263,8 +237,6 @@ namespace AndresRamosExamenFinal.Data
                 return true;
             }
             // (App.Current.MainPage.BindingContext as MainPageViewModel).RefreshTaskList();
-
-
         }
         public async Task ChangeItemIsCompleted(ProductoModel itemToChange)
         {

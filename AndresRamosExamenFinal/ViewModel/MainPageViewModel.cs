@@ -11,7 +11,7 @@ using AndresRamosExamenFinal.View;
 
 namespace AndresRamosExamenFinal.ViewModel
 {
-    class MainPageViewModel : INotifyPropertyChanged
+    public class MainPageViewModel : INotifyPropertyChanged
     {
         bool isBusy;
         public bool IsBusy
@@ -23,11 +23,11 @@ namespace AndresRamosExamenFinal.ViewModel
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
             }
         }
+        private INavigation _navigation;
         public MainPageViewModel(INavigation navigation)
         {
             _navigation = navigation;
             IsBusy = true;
-
             GetGroupedProductoList().ContinueWith(t =>
             {
                 IsBusy = false;
@@ -42,21 +42,20 @@ namespace AndresRamosExamenFinal.ViewModel
             {
                 if (item is null)
                     return;
-
                 var detailViewModel = new DetailProductoPageViewModel
                 {
-
-
-                    Codigo_principal_producto = item.codigo_principal_producto,
-                    Codigo_auxiliar_producto = item.codigo_auxiliar_producto,
+                    CodigoPrincipalProducto = item.codigo_principal_producto,
+                    CodigoAuxiliarProducto = item.codigo_auxiliar_producto,
+                    Nombre = item.nombre,
+                    ValorUnitario = item.valor_unitario,
+                    TipoProductosId = item.tipo_productos_id,
+                    UsersId = item.users_id,
                     Id = item.id,
                     IsCompleted = item.isCompleted == 0 ? false : true
                 };
-
                 await Application.Current.MainPage.Navigation.PushAsync(new DetailProductoPage(detailViewModel));
             });
         }
-
         public async Task HandleNoteSelected(ProductoModel producto)
         {
             if (producto is null)
@@ -65,11 +64,15 @@ namespace AndresRamosExamenFinal.ViewModel
             var detailViewModel = new DetailProductoPageViewModel
             {
 
-                Codigo_principal_producto = producto.codigo_principal_producto,
+                CodigoPrincipalProducto = producto.codigo_principal_producto,
+                CodigoAuxiliarProducto = producto.codigo_auxiliar_producto,
+                Nombre = producto.nombre,
+                ValorUnitario = producto.valor_unitario,
+                TipoProductosId = producto.tipo_productos_id,
+                UsersId = producto.users_id,
                 Id = producto.id,
                 IsCompleted = producto.isCompleted == 0 ? false : true
             };
-
             await Application.Current.MainPage.Navigation.PushAsync(new DetailProductoPage(detailViewModel));
         }
         ProductoModel selectedNote;
@@ -82,23 +85,15 @@ namespace AndresRamosExamenFinal.ViewModel
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedNote)));
             }
         }
-        private INavigation _navigation;
-
         public event PropertyChangedEventHandler PropertyChanged;
-
         public ILookup<string, ProductoModel> GroupedProductoList { get; set; }
         public string Title => "My Producto list";
-
         private async Task<ILookup<string, ProductoModel>> GetGroupedProductoList()
         {
-
-
             return (await App.Database.GetProductoModelsAsync())
-
                              .OrderBy(t => t.isCompleted)
                              .ToLookup(t => t.isCompleted == 1 ? "Completed" : "Active");
         }
-
         public Command<ProductoModel> Delete { get; set; }
         public Command Logout { get; set; }
         public Command<ProductoModel> NoteSelectedCommand { get; }
@@ -107,15 +102,12 @@ namespace AndresRamosExamenFinal.ViewModel
             IsBusy = true;
             await App.Database.DeleteProductoModelAsync(itemToDelete);
             // Update displayed list
-
             GroupedProductoList = await GetGroupedProductoList();
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GroupedProductoList)));
             IsBusy = false;
         }
-
         public async void HandleLogout()
         {
-
             try
             {
                 IsBusy = true;
@@ -125,12 +117,7 @@ namespace AndresRamosExamenFinal.ViewModel
             {
                 IsBusy = false;
             }
-
-
-            // Update displayed list
-
         }
-
         public Command<ProductoModel> ChangeIsCompleted { get; set; }
         public async void HandleChangeIsCompleted(ProductoModel itemToUpdate)
         {
@@ -138,23 +125,18 @@ namespace AndresRamosExamenFinal.ViewModel
             await App.Database.ChangeItemIsCompleted(itemToUpdate);
             // Update displayed list
             GroupedProductoList = await GetGroupedProductoList();
-
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GroupedProductoList)));
             IsBusy = false;
         }
-
         public Command AddItem { get; set; }
         public async void HandleAddItem()
         {
-
             await _navigation.PushModalAsync(new AddProductoPage());
         }
-
         public async Task RefreshTaskList()
         {
             IsBusy = true;
             GroupedProductoList = await GetGroupedProductoList();
-
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GroupedProductoList)));
             IsBusy = false;
         }

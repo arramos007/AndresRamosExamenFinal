@@ -1,9 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://xamarin.com/schemas/2014/forms"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             Title="{Binding Title}"
              x:Class="AndresRamosExamenFinal.View.DetailProductoPage">
-
     <ContentPage.Content>
         <Grid VerticalOptions="Fill" HorizontalOptions="Fill">
             <Grid.RowDefinitions>
@@ -15,6 +13,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*"/>
@@ -22,13 +22,17 @@
                 </Grid.ColumnDefinitions>
                 <Label  Grid.Column="0" Grid.Row="0"  Text="ID:"  />
                 <Entry  Grid.Column="1" Grid.Row="0"  Text="{Binding Id}"/>
-                <Label  Grid.Column="0" Grid.Row="1"  Text="Title:"  />
-                <Entry  Grid.Column="1" Grid.Row="1"  Text="{Binding Title}"/>
-                <Label  Grid.Column="0" Grid.Row="2"  Text="Complete:"  />
-                <CheckBox  Grid.Column="1" Grid.Row="2"  IsChecked="{Binding IsCompleted}" />
+                <Label  Grid.Column="0" Grid.Row="1"  Text="Codigo:"  />
+                <Entry  Grid.Column="1" Grid.Row="1"  Text="{Binding CodigoPrincipalProducto}"/>
+                <Label  Grid.Column="0" Grid.Row="2"  Text="Nombre:"  />
+                <Entry  Grid.Column="1" Grid.Row="2"  Text="{Binding Nombre}"/>
+                <Label  Grid.Column="0" Grid.Row="3"  Text="Valor:"  />
+                <Entry  Grid.Column="1" Grid.Row="3"  Text="{Binding ValorUnitario}"/>
+                <Label  Grid.Column="0" Grid.Row="4"  Text="Complete:"  />
+                <CheckBox  Grid.Column="1" Grid.Row="4"  IsChecked="{Binding IsCompleted}" />
 
-                <Button  Grid.Column="0" Grid.Row="3"  Command="{Binding ExitCommand}" Text="Cancel"  TextColor="#FFF" BackgroundColor="#F44336"  />
-                <Button  Grid.Column="1" Grid.Row="3"   Command="{Binding UpdateCommand}" Text="Update" TextColor="#FFF" BackgroundColor="#4CAF50"/>
+                <Button  Grid.Column="0" Grid.Row="5"  Command="{Binding ExitCommand}" Text="Cancel"  TextColor="#FFF" BackgroundColor="#F44336"  />
+                <Button  Grid.Column="1" Grid.Row="5"   Command="{Binding UpdateCommand}" Text="Update" TextColor="#FFF" BackgroundColor="#4CAF50"/>
 
             </Grid>
             <ContentView x:Name="popupLoadingView" BackgroundColor="#C0808080" Padding="10, 0" IsVisible="{Binding IsBusy}" AbsoluteLayout.LayoutBounds="0, 0, 1, 1" AbsoluteLayout.LayoutFlags="All">

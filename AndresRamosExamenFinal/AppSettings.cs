@@ -6,6 +6,6 @@ namespace AndresRamosExamenFinal
 {
     public static class AppSettings
     {
-        public static string ApiUrl = "https://easyfactweb.sumayait.com";
+        public static string ApiUrl = "https://easyfactweb.sumayait.com/";
     }
 }

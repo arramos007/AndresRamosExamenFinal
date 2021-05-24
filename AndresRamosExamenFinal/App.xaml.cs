@@ -27,38 +27,33 @@ namespace AndresRamosExamenFinal
             {
                 if (database == null)
                 {
-                    database = new ProductoDatabase(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Producto.db3"));
+                    database = new ProductoDatabase(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NProducto.db3"));
                 }
                 return database;
             }
-
         }
         public App()
         {
             InitializeComponent();
-
             var access_token = Preferences.Get("access_token", string.Empty);
-
             if (string.IsNullOrEmpty(access_token))
-            {
                 MainPage = new NavigationPage(new SignupView());
-            }
             else
-            {
                 MainPage = new NavigationPage(new MainPage());
-            }
         }
 
         protected override void OnStart()
         {
-            // Handle when your app starts  
             CrossConnectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
         }
 
         private void HandleConnectivityChanged(object sender, Plugin.Connectivity.Abstractions.ConnectivityChangedEventArgs e)
         {
             Type currentPage = this.MainPage.GetType();
-            // if (e.IsConnected && currentPage != typeof(MainPage)) this.MainPage = new MainPage();
+            if (e.IsConnected && currentPage != typeof(MainPage))
+                this.MainPage = new MainPage();
+            else if (!e.IsConnected && currentPage != typeof(MainPage))
+                this.MainPage = new MainPage();
         }
 
         protected override void OnSleep()

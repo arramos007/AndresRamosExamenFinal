@@ -14,7 +14,7 @@ namespace AndresRamosExamenFinal.Model
         public string codigo_auxiliar_producto { get; set; }
         public string nombre { get; set; }
         public float valor_unitario { get; set; }
-        public string tipo_productos_id { get; set; }
+        public int tipo_productos_id { get; set; }
         public int users_id { get; set; }
         public int isCompleted { get; set; }
         public DateTimeOffset created_at { get; set; }

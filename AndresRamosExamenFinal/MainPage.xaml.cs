@@ -1,10 +1,6 @@
-﻿using AndresRamosExamenFinal.ViewModel;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using AndresRamosExamenFinal.Model;
+using AndresRamosExamenFinal.ViewModel;
+using Plugin.Connectivity;
 using Xamarin.Forms;
 
 namespace AndresRamosExamenFinal
@@ -15,6 +11,27 @@ namespace AndresRamosExamenFinal
         {
             InitializeComponent();
             BindingContext = new MainPageViewModel(Navigation);
+        }
+        protected override async void OnAppearing()
+        {
+            base.OnAppearing();
+            await (BindingContext as MainPageViewModel).RefreshTaskList();
+            CrossConnectivity.Current.ConnectivityChanged += UpdateNetworkInfo;
+        }
+
+        protected override void OnDisappearing()
+        {
+            CrossConnectivity.Current.ConnectivityChanged -= UpdateNetworkInfo;
+        }
+
+        private async void UpdateNetworkInfo(object sender, Plugin.Connectivity.Abstractions.ConnectivityChangedEventArgs e)
+        {
+            await (BindingContext as MainPageViewModel).RefreshTaskList();
+        }
+
+        private async void ProductoDisplayList_ItemSelected(object sender, SelectedItemChangedEventArgs e)
+        {
+            await (BindingContext as MainPageViewModel).HandleNoteSelected((ProductoModel)e.SelectedItem);
         }
     }
 }
