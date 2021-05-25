@@ -8,7 +8,7 @@ namespace AndresRamosExamenFinal.Model
     public class ProductoModel
     {
         [PrimaryKey, AutoIncrement]
-        public int cid { get; set; }
+        //public int cid { get; set; }
         public int id { get; set; }
         public string codigo_principal_producto { get; set; }
         public string codigo_auxiliar_producto { get; set; }

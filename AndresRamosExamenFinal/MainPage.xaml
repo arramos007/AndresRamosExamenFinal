@@ -17,21 +17,25 @@
                 <ListView  HeightRequest="{Binding Path=Height, Source={x:Reference absLayout}}" ItemsSource="{Binding GroupedProductoList}"
                       IsGroupingEnabled="True"
                       ItemSelected="ProductoDisplayList_ItemSelected"
-                      GroupDisplayBinding="{Binding Key}"
+                      GroupDisplayBinding="{Binding id}"
                       x:Name="ProductoDisplayList">
                     <ListView.ItemTemplate >
                         <DataTemplate>
 
-                            <TextCell Text="{Binding nombre}">
-                                <TextCell.ContextActions>
+
+
+                            <ImageCell  ImageSource="http://easyfactweb.sumayait.com/product.png"
+                                Text="{Binding nombre}"                                  
+                                Detail="{Binding valor_unitario}">
+                                <ImageCell.ContextActions>
                                     <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.ChangeIsCompleted }"
                                           CommandParameter="{Binding .}" Text="{Binding isCompleted, Converter={StaticResource ChangeCompletedActionTextConverter}}" />
                                     <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.Delete }" 
                                           CommandParameter="{Binding .}" Text="Delete" IsDestructive="True" />
                                     <MenuItem Command="{Binding Source={x:Reference ProductoDisplayList}, Path=BindingContext.NoteSelectedCommand }" 
                                           CommandParameter="{Binding .}" Text="View"  />
-                                </TextCell.ContextActions>
-                            </TextCell>
+                                </ImageCell.ContextActions>
+                            </ImageCell>
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>

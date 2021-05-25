@@ -14,6 +14,7 @@ namespace AndresRamosExamenFinal.Service
 {
     public class ApiService
     {
+        
         public static async Task<bool> RegisterUser(string name = "", string email = "", string password = "", string password_confirmation = "")
         {
             var register = new RegisterModel()
@@ -80,6 +81,32 @@ namespace AndresRamosExamenFinal.Service
         }
         public static async Task<ProductoModel> PostProducto(ProductoModel producto)
         {
+            string _Latitude = "";
+            string _Longitude = "";
+            string _Altitude = "";
+            try
+            {
+                var location = await Geolocation.GetLastKnownLocationAsync();
+                if (location != null)
+                {
+                    _Latitude = location.Latitude.ToString();
+                    _Longitude = location.Longitude.ToString();
+                    _Altitude = location.Altitude.ToString();
+                }
+            }
+            catch (FeatureNotSupportedException fnsEx)
+            {
+                // Handle not supported on device exception  
+            }
+            catch (PermissionException pEx)
+            {
+                // Handle permission exception  
+            }
+            catch (Exception ex)
+            {
+                // Unable to get location  
+            }
+            //producto.coordenada = "-" + _Latitude.ToString() + " " + _Longitude.ToString();
             producto.users_id = Int32.Parse(Preferences.Get("userId", string.Empty));
             producto.tipo_productos_id = 1;
             var httpClient = new HttpClient();

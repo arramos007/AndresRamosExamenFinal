@@ -8,53 +8,45 @@
         <ScrollView>
             <StackLayout Spacing="20"
                          Margin="25">
-                <Label TextColor="#CE0B06"
-                       Text="SIGN UP"
-                       FontSize="Large"
-                       FontAttributes="Bold"
-                       HorizontalTextAlignment="Center"
-                       Margin="30,0,30,0" />
+                <Frame BackgroundColor="#2196F3" Padding="10" CornerRadius="0">
+                    <Image Source="https://sbsconsulting.com.ec/wp-content/uploads/2018/01/LOGO-UISRAEL-768x209.png"/>
+                </Frame>
                 <Frame HasShadow="True"
                        Padding="25"
                        Margin="0,30,0,0">
                     <StackLayout>
-                        <Label Text="Create An Account"
+                        <Label Text="Crear una Cuenta"
                                FontAttributes="Bold"
                                FontSize="Title"
                                HorizontalOptions="Center"
-                               TextColor="#CE0B06" />
-                        <Entry Placeholder="Full Name"
+                               TextColor="#2196F3" />
+                        <Entry Placeholder="Nombre Completo"
                                PlaceholderColor="#80574D"
                                TextColor="#80574D"
                                x:Name="EntName"
                                Keyboard="Text" />
-                        <Entry Placeholder="Email"
+                        <Entry Placeholder="Correo Electronico"
                                PlaceholderColor="#80574D"
                                TextColor="#80574D"
                                x:Name="EntEmail"
                                Keyboard="Email" />
-                        <Entry Placeholder="Password"
+                        <Entry Placeholder="Contraseña"
                                PlaceholderColor="#80574D"
                                TextColor="#80574D"
                                IsPassword="True"
                                x:Name="EntPassword"
                                Keyboard="Default" />
-                        <Entry Placeholder="Confirm Password"
+                        <Entry Placeholder="Confirme Contraseña"
                                PlaceholderColor="#80574D"
                                TextColor="#80574D"
                                IsPassword="True"
                                x:Name="EntConfirmPassword"
                                Keyboard="Default" />
-                        <Label Margin="20,0,20,0"
-                               FontSize="Small"
-                               HorizontalTextAlignment="Center"
-                               TextColor="#80574D"
-                               Text="By creating an account you agree to our Terms of Service and Privacy Policy" />
                     </StackLayout>
                 </Frame>
                 <Button Text="CONTINUE"
                         TextColor="White"
-                        BackgroundColor="#CE0B06"
+                        BackgroundColor="#2196F3"
                         Clicked="BtnSignUp_Clicked"
                         x:Name="BtnSignUp" />
                 <Label Text="Already have an account?"
@@ -62,7 +54,7 @@
                        TextColor="#80574D" />
                 <Button Text="Login"
                         Clicked="BtnLogin_Clicked"
-                        BackgroundColor="#CE0B06"
+                        BackgroundColor="#2196F3"
                         TextColor="White"
                         x:Name="BtnLogin" />
             </StackLayout>

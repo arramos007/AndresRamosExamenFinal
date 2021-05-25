@@ -27,7 +27,7 @@ namespace AndresRamosExamenFinal
             {
                 if (database == null)
                 {
-                    database = new ProductoDatabase(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NProducto.db3"));
+                    database = new ProductoDatabase(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Aproducto.db3"));
                 }
                 return database;
             }

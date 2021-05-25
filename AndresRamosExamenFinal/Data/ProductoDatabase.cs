@@ -131,7 +131,8 @@ namespace AndresRamosExamenFinal.Data
                     else if (client.Any(x => x.id == (int)jp["id"]))
                     {
                         JObject updateClient = JObject.Parse(JsonConvert.SerializeObject(client.Single(x => x.id == (int)jp["id"])));
-                        producto.cid = (int)updateClient["cid"];
+                        //producto.cid = (int)updateClient["cid"];
+                        producto.id = (int)updateClient["id"];
                         await _database.UpdateAsync(producto);
                     }
                     serverId.Add((int)jp["id"]);
