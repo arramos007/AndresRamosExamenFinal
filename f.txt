@@ -1,3 +1,4 @@
+cambio 
 
 let
     Propietario = Text.Trim(
