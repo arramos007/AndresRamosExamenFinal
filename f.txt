@@ -1,13 +1,31 @@
 
 let
+    // Identificación del dueño de la cartola
+    Propietario = Text.Trim(
+        Text.From([#"IDENTIFICACION EMPLEADO (EF)"])
+    ),
+
+    // Normalizar identificaciones
+    ObtenerID = (Valor as any) as text =>
+        if Valor = null then ""
+        else Text.Trim(Text.From(Valor)),
+
+    // Orden cronológico de los movimientos
     Movs = Table.Sort(
         [MOVIMIENTOS],
         {{"FECHA DE MOV.", Order.Ascending}}
     ),
 
+    // 1. Acreditaciones originales del SRI
     Acreditaciones = Table.SelectRows(
         Movs,
-        each [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI"
+        each
+            [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI"
+            and [TIPO MOV.] = "CRE"
+            and [#"ACTO ADMINIS."] <> null
+            and ObtenerID(
+                [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+            ) <> ""
     ),
 
     UltimaAcreditacion =
@@ -20,12 +38,20 @@ let
         then UltimaAcreditacion[#"FECHA DE MOV."]
         else null,
 
+    // 2. Endosos realizados por el propio contribuyente
     DebitosPosteriores =
         if FechaSRI <> null then
             Table.SelectRows(
                 Movs,
                 each
                     [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+                    and [TIPO MOV.] = "DEB"
+                    and ObtenerID(
+                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+                    ) = Propietario
+                    and ObtenerID(
+                        [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
+                    ) <> ""
                     and [#"FECHA DE MOV."] > FechaSRI
             )
         else
@@ -41,12 +67,23 @@ let
         then PrimerDebito[#"FECHA DE MOV."]
         else null,
 
+    // 3. Endosos recibidos de otros contribuyentes
     EndososRecibidos =
         if FechaSRI <> null and FechaDebito <> null then
             Table.SelectRows(
                 Movs,
                 each
                     [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+                    and [TIPO MOV.] = "CRE"
+                    and ObtenerID(
+                        [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
+                    ) = Propietario
+                    and ObtenerID(
+                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+                    ) <> ""
+                    and ObtenerID(
+                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+                    ) <> Propietario
                     and [#"FECHA DE MOV."] > FechaSRI
                     and [#"FECHA DE MOV."] < FechaDebito
             )
@@ -56,6 +93,12 @@ let
     CantidadEndososRecibidos =
         Table.RowCount(EndososRecibidos),
 
+    MontoEndososRecibidos =
+        if CantidadEndososRecibidos > 0
+        then List.Sum(EndososRecibidos[MONTO MOV.])
+        else 0,
+
+    // 4. Saldo y monto del primer endoso
     SaldoSRI =
         if UltimaAcreditacion <> null
         then UltimaAcreditacion[#"SALDO NCD"]
@@ -63,12 +106,14 @@ let
 
     MontoDebito =
         if PrimerDebito <> null
-        then PrimerDebito[#"MONTO MOV."]
+        then PrimerDebito[MONTO MOV.]
         else null,
 
     Beneficiario =
         if PrimerDebito <> null
-        then PrimerDebito[#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
+        then PrimerDebito[
+            #"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
+        ]
         else null,
 
     CumpleSaldo =
@@ -76,6 +121,7 @@ let
         then MontoDebito <= SaldoSRI
         else false,
 
+    // 5. Resultado
     Resultado =
         if UltimaAcreditacion = null then
             "SIN ACREDITACION SRI"
@@ -108,6 +154,9 @@ in
         ENDOSOS_RECIBIDOS_INTERMEDIOS =
             CantidadEndososRecibidos,
 
+        MONTO_ENDOSOS_RECIBIDOS_INTERMEDIOS =
+            MontoEndososRecibidos,
+
         CUMPLE_SALDO = CumpleSaldo,
 
         IDENTIFICACION_N1 =
@@ -117,3 +166,4 @@ in
 
         RESULTADO_N1 = Resultado
     ]
+
