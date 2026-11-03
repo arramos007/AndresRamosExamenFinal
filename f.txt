@@ -1,0 +1,119 @@
+
+let
+    Movs = Table.Sort(
+        [MOVIMIENTOS],
+        {{"FECHA DE MOV.", Order.Ascending}}
+    ),
+
+    Acreditaciones = Table.SelectRows(
+        Movs,
+        each [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI"
+    ),
+
+    UltimaAcreditacion =
+        if Table.RowCount(Acreditaciones) > 0
+        then Table.Last(Acreditaciones)
+        else null,
+
+    FechaSRI =
+        if UltimaAcreditacion <> null
+        then UltimaAcreditacion[#"FECHA DE MOV."]
+        else null,
+
+    DebitosPosteriores =
+        if FechaSRI <> null then
+            Table.SelectRows(
+                Movs,
+                each
+                    [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+                    and [#"FECHA DE MOV."] > FechaSRI
+            )
+        else
+            #table({}, {}),
+
+    PrimerDebito =
+        if Table.RowCount(DebitosPosteriores) > 0
+        then Table.First(DebitosPosteriores)
+        else null,
+
+    FechaDebito =
+        if PrimerDebito <> null
+        then PrimerDebito[#"FECHA DE MOV."]
+        else null,
+
+    EndososRecibidos =
+        if FechaSRI <> null and FechaDebito <> null then
+            Table.SelectRows(
+                Movs,
+                each
+                    [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+                    and [#"FECHA DE MOV."] > FechaSRI
+                    and [#"FECHA DE MOV."] < FechaDebito
+            )
+        else
+            #table({}, {}),
+
+    CantidadEndososRecibidos =
+        Table.RowCount(EndososRecibidos),
+
+    SaldoSRI =
+        if UltimaAcreditacion <> null
+        then UltimaAcreditacion[#"SALDO NCD"]
+        else null,
+
+    MontoDebito =
+        if PrimerDebito <> null
+        then PrimerDebito[#"MONTO MOV."]
+        else null,
+
+    Beneficiario =
+        if PrimerDebito <> null
+        then PrimerDebito[#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
+        else null,
+
+    CumpleSaldo =
+        if SaldoSRI <> null and MontoDebito <> null
+        then MontoDebito <= SaldoSRI
+        else false,
+
+    Resultado =
+        if UltimaAcreditacion = null then
+            "SIN ACREDITACION SRI"
+        else if PrimerDebito = null then
+            "SIN ENDOSO REALIZADO"
+        else if CantidadEndososRecibidos > 0 then
+            "NO ES NIVEL 1 - RECIBIO ENDOSOS"
+        else if not CumpleSaldo then
+            "NO ES NIVEL 1 - SALDO INSUFICIENTE"
+        else
+            "NIVEL 1"
+
+in
+    [
+        FECHA_ULTIMA_ACREDITACION = FechaSRI,
+
+        ACTO_ADMINISTRATIVO =
+            if UltimaAcreditacion <> null
+            then UltimaAcreditacion[#"ACTO ADMINIS."]
+            else null,
+
+        SALDO_ACREDITACION = SaldoSRI,
+
+        FECHA_PRIMER_ENDOSO = FechaDebito,
+
+        MONTO_PRIMER_ENDOSO = MontoDebito,
+
+        IDENTIFICACION_BENEFICIARIO = Beneficiario,
+
+        ENDOSOS_RECIBIDOS_INTERMEDIOS =
+            CantidadEndososRecibidos,
+
+        CUMPLE_SALDO = CumpleSaldo,
+
+        IDENTIFICACION_N1 =
+            if Resultado = "NIVEL 1"
+            then Beneficiario
+            else null,
+
+        RESULTADO_N1 = Resultado
+    ]
