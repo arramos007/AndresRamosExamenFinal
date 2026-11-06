@@ -1,38 +1,24 @@
-cambio 2
+cambio 3
 let
-    Origen = qryRedTransacciones,
+    EmisorTrama =
+        if [#"EN TRAMA EMISOR"] = null
+        then ""
+        else Text.Upper(Text.Trim(Text.From([#"EN TRAMA EMISOR"]))),
 
-    FiltrarRelaciones = Table.SelectRows(
-        Origen,
-        each
-            [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"] <> null
-            and [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"] <> null
-            and Text.Trim(Text.From([#"IDENTIFICACION DEL EMISOR / ENDOSANTE"])) <> ""
-            and Text.Trim(Text.From([#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"])) <> ""
-            and [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-                <> [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
-    ),
+    BeneficiarioTrama =
+        if [#"EN TRAMA BENEF."] = null
+        then ""
+        else Text.Upper(Text.Trim(Text.From([#"EN TRAMA BENEF."]))),
 
-    SeleccionarRelaciones = Table.SelectColumns(
-        FiltrarRelaciones,
-        {
-            "IDENTIFICACION EMPLEADO (EF)",
-            "RUC SOCIAL EMPLEADOR",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "CODIGO LIQUID.",
-            "IDENTIFICACION DEL EMISOR / ENDOSANTE",
-            "NOMBRE DEL EMISOR / ENDOSANTE",
-            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-            "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-            "EN TRAMA EMISOR",
-            "EN TRAMA BENEF.",
-            "TIPO MOV.",
-            "NOMBRE MOV.",
-            "MONTO MOV.",
-            "SALDO NCD",
-            "CLASIFICACION_MOVIMIENTO"
-        }
-    )
+    Clasificacion = [CLASIFICACION_MOVIMIENTO]
 in
-    SeleccionarRelaciones
+    if EmisorTrama = "T" and BeneficiarioTrama = "T" then
+        "TRANSFERENCIA_INTERNA"
+    else if EmisorTrama = "T" and BeneficiarioTrama = "" then
+        "SALIDA_TRAMA"
+    else if EmisorTrama = "" and BeneficiarioTrama = "T" then
+        "ENTRADA_TRAMA"
+    else if EmisorTrama = "" and BeneficiarioTrama = "" then
+        "TRANSFERENCIA_EXTERNA"
+    else
+        "REVISAR"
