@@ -1,5 +1,3 @@
-#10
-
 let
     Origen = qryDetalleDuplicado,
 
@@ -13,11 +11,20 @@ let
                 Int64.Type
             },
             {
+                "REGISTROS_DISTINTOS",
+                each Table.RowCount(Table.Distinct(_)),
+                Int64.Type
+            },
+            {
+                "REPETICIONES_EXACTAS",
+                each Table.RowCount(_) -
+                     Table.RowCount(Table.Distinct(_)),
+                Int64.Type
+            },
+            {
                 "MONTO_UNICO",
                 each List.First(
-                    List.Distinct(
-                        Table.Column(_, "MONTO MOV.")
-                    )
+                    List.Distinct(Table.Column(_, "MONTO MOV."))
                 ),
                 type nullable number
             }
