@@ -1,53 +1,30 @@
-cambio 4
+cambio 5
 let
     Origen = qryAristasRed,
 
-    FiltrarEndosos = Table.SelectRows(
+    FiltrarCodigo = Table.SelectRows(
         Origen,
-        each
-            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+        each Text.From([#"CODIGO MOV."]) = "45727095"
     ),
 
-    AgruparMovimientos = Table.Group(
-        FiltrarEndosos,
-        {"CODIGO MOV."},
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarCodigo,
         {
-            {
-                "TOTAL_REGISTROS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "EMISORES",
-                each List.Count(
-                    List.Distinct(
-                        Table.Column(
-                            _,
-                            "IDENTIFICACION DEL EMISOR / ENDOSANTE"
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "BENEFICIARIOS",
-                each List.Count(
-                    List.Distinct(
-                        Table.Column(
-                            _,
-                            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
-                        )
-                    )
-                ),
-                Int64.Type
-            }
+            "IDENTIFICACION EMPLEADO (EF)",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+            "TIPO MOV.",
+            "NOMBRE MOV.",
+            "MONTO MOV.",
+            "CLASIFICACION_MOVIMIENTO"
         }
     ),
 
     Ordenar = Table.Sort(
-        AgruparMovimientos,
-        {{"TOTAL_REGISTROS", Order.Descending}}
+        SeleccionarColumnas,
+        {{"IDENTIFICACION EMPLEADO (EF)", Order.Ascending}}
     )
 in
     Ordenar
