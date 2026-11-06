@@ -9,7 +9,7 @@ let
         },
         {
             {
-                "EMPRESAS_RELACIONADAS",
+                "EMPRESAS",
                 each List.Count(
                     List.Distinct(
                         List.RemoveNulls(
@@ -20,16 +20,49 @@ let
                 Int64.Type
             },
             {
-                "REGISTROS_EXCEDENTES",
-                each List.Max(
-                    List.RemoveNulls(
-                        Table.Column(_, "REGISTROS_EXCEDENTES")
+                "REPETICIONES_DISTINTAS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "TOTAL_REPETICIONES")
+                        )
                     )
                 ),
                 Int64.Type
             },
             {
-                "MONTO_EXCEDENTE_CANDIDATO",
+                "EXCEDENTES_DISTINTOS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "REGISTROS_EXCEDENTES")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTOS_DISTINTOS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_MINIMO",
+                each List.Min(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
+                    )
+                ),
+                type number
+            },
+            {
+                "MONTO_MAXIMO",
                 each List.Max(
                     List.RemoveNulls(
                         Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
@@ -40,10 +73,16 @@ let
         }
     ),
 
-    Ordenar = Table.Sort(
+    FiltrarCompartidos = Table.SelectRows(
         Agrupar,
+        each [EMPRESAS] > 1
+    ),
+
+    Ordenar = Table.Sort(
+        FiltrarCompartidos,
         {
-            {"MONTO_EXCEDENTE_CANDIDATO", Order.Descending}
+            {"MONTOS_DISTINTOS", Order.Descending},
+            {"EXCEDENTES_DISTINTOS", Order.Descending}
         }
     )
 in
