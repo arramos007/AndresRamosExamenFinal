@@ -1,24 +1,53 @@
-cambio 3
+cambio 4
 let
-    EmisorTrama =
-        if [#"EN TRAMA EMISOR"] = null
-        then ""
-        else Text.Upper(Text.Trim(Text.From([#"EN TRAMA EMISOR"]))),
+    Origen = qryAristasRed,
 
-    BeneficiarioTrama =
-        if [#"EN TRAMA BENEF."] = null
-        then ""
-        else Text.Upper(Text.Trim(Text.From([#"EN TRAMA BENEF."]))),
+    FiltrarEndosos = Table.SelectRows(
+        Origen,
+        each
+            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+    ),
 
-    Clasificacion = [CLASIFICACION_MOVIMIENTO]
+    AgruparMovimientos = Table.Group(
+        FiltrarEndosos,
+        {"CODIGO MOV."},
+        {
+            {
+                "TOTAL_REGISTROS",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "EMISORES",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(
+                            _,
+                            "IDENTIFICACION DEL EMISOR / ENDOSANTE"
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "BENEFICIARIOS",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(
+                            _,
+                            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
+                        )
+                    )
+                ),
+                Int64.Type
+            }
+        }
+    ),
+
+    Ordenar = Table.Sort(
+        AgruparMovimientos,
+        {{"TOTAL_REGISTROS", Order.Descending}}
+    )
 in
-    if EmisorTrama = "T" and BeneficiarioTrama = "T" then
-        "TRANSFERENCIA_INTERNA"
-    else if EmisorTrama = "T" and BeneficiarioTrama = "" then
-        "SALIDA_TRAMA"
-    else if EmisorTrama = "" and BeneficiarioTrama = "T" then
-        "ENTRADA_TRAMA"
-    else if EmisorTrama = "" and BeneficiarioTrama = "" then
-        "TRANSFERENCIA_EXTERNA"
-    else
-        "REVISAR"
+    Ordenar
