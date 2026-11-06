@@ -1,11 +1,9 @@
 let
-    Origen = qryAuditoriaDuplicadosExactos,
+    Origen = qryMovimientosClasificados,
 
     Filtrar = Table.SelectRows(
         Origen,
-        each
-            [#"IDENTIFICACION EMPLEADO (EF)"] = "0926877341001"
-            and [#"CODIGO MOV."] = 45493225
+        each [#"CODIGO MOV."] = 45493225
     ),
 
     Seleccionar = Table.SelectColumns(
@@ -17,10 +15,13 @@ let
             "CODIGO LIQUID.",
             "ACTO ADMINIS.",
             "FECHA DE MOV.",
-            "TOTAL_REPETICIONES",
-            "REGISTROS_EXCEDENTES",
+            "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
             "MONTO MOV.",
-            "MONTO_EXCEDENTE_CANDIDATO"
+            "SALDO NCD",
+            "CLASIFICACION_MOVIMIENTO"
         }
     ),
 
