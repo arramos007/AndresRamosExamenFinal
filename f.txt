@@ -1,9 +1,11 @@
+#11
+
 let
-    Origen = qryDetalleDuplicado,
+    Origen = qryAuditoriaDuplicadosExactos,
 
     Agrupar = Table.Group(
         Origen,
-        {"RUC SOCIAL EMPLEADOR"},
+        {"CODIGO MOV."},
         {
             {
                 "TOTAL_REGISTROS",
@@ -16,19 +18,58 @@ let
                 Int64.Type
             },
             {
+                "PROPIETARIOS_DISTINTOS",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(_, "IDENTIFICACION EMPLEADO (EF)")
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "EMPRESAS_DISTINTAS",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "ACTOS_ADMINISTRATIVOS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ACTO ADMINIS.")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "FECHAS_DISTINTAS",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(_, "FECHA DE MOV.")
+                    )
+                ),
+                Int64.Type
+            },
+            {
                 "REPETICIONES_EXACTAS",
                 each Table.RowCount(_) -
                      Table.RowCount(Table.Distinct(_)),
                 Int64.Type
-            },
-            {
-                "MONTO_UNICO",
-                each List.First(
-                    List.Distinct(Table.Column(_, "MONTO MOV."))
-                ),
-                type nullable number
             }
+        }
+    ),
+
+    Ordenar = Table.Sort(
+        Agrupar,
+        {
+            {"REPETICIONES_EXACTAS", Order.Descending},
+            {"TOTAL_REGISTROS", Order.Descending}
         }
     )
 in
-    Agrupar
+    Ordenar
