@@ -1,79 +1,52 @@
+#12
+
 let
     Origen = qryAuditoriaDuplicadosExactos,
 
-    Agrupar = Table.Group(
-        Origen,
-        {"CODIGO MOV."},
-        {
-            {
-                "TOTAL_REGISTROS",
-                each List.Sum(
-                    Table.Column(_, "TOTAL_REPETICIONES")
-                ),
-                Int64.Type
-            },
-            {
-                "REGISTROS_DISTINTOS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "PROPIETARIOS_DISTINTOS",
-                each List.Count(
-                    List.Distinct(
-                        Table.Column(_, "IDENTIFICACION EMPLEADO (EF)")
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EMPRESAS_DISTINTAS",
-                each List.Count(
-                    List.Distinct(
-                        Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "ACTOS_ADMINISTRATIVOS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ACTO ADMINIS.")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "FECHAS_DISTINTAS",
-                each List.Count(
-                    List.Distinct(
-                        Table.Column(_, "FECHA DE MOV.")
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "REPETICIONES_EXACTAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(_, "TOTAL_REPETICIONES"),
-                        each _ - 1
-                    )
-                ),
-                Int64.Type
-            }
-        }
+    CodigosUnicos = List.Distinct(
+        Table.Column(Origen, "CODIGO MOV.")
     ),
 
-    Ordenar = Table.Sort(
-        Agrupar,
+    CodigosRepetidos = Table.SelectRows(
+        Origen,
+        each [TOTAL_REPETICIONES] > 1
+    ),
+
+    Propietarios = List.Distinct(
+        List.RemoveNulls(
+            Table.Column(Origen, "IDENTIFICACION EMPLEADO (EF)")
+        )
+    ),
+
+    Empresas = List.Distinct(
+        List.RemoveNulls(
+            Table.Column(Origen, "RUC SOCIAL EMPLEADOR")
+        )
+    ),
+
+    TotalRegistros = Table.RowCount(Origen),
+
+    TotalRepeticiones = List.Sum(
+        List.Transform(
+            Table.Column(Origen, "TOTAL_REPETICIONES"),
+            each if _ = null then 0 else _ - 1
+        )
+    ),
+
+    Resultado = #table(
+        {"INDICADOR", "VALOR"},
         {
-            {"REPETICIONES_EXACTAS", Order.Descending},
-            {"TOTAL_REGISTROS", Order.Descending}
+            {"CODIGOS_AUDITADOS", List.Count(CodigosUnicos)},
+            {"CODIGOS_CON_REPETICIONES", List.Count(
+                List.Distinct(
+                    Table.Column(CodigosRepetidos, "CODIGO MOV.")
+                )
+            )},
+            {"REGISTROS_AUDITADOS", TotalRegistros},
+            {"PROPIETARIOS_INVOLUCRADOS", List.Count(Propietarios)},
+            {"EMPRESAS_INVOLUCRADAS", List.Count(Empresas)},
+            {"REPETICIONES_ADICIONALES", TotalRepeticiones}
         }
     )
 in
-    Ordenar
+    Resultado
