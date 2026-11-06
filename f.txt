@@ -1,148 +1,38 @@
-cambio 
-
+cambio 2
 let
-    Propietario = Text.Trim(
-        Text.From([#"IDENTIFICACION EMPLEADO (EF)"])
-    ),
+    Origen = qryRedTransacciones,
 
-    ObtenerID = (Valor as any) as text =>
-        if Valor = null then ""
-        else Text.Trim(Text.From(Valor)),
-
-    Movs = Table.Sort(
-        [MOVIMIENTOS],
-        {{"FECHA DE MOV.", Order.Ascending}}
-    ),
-
-    Acreditaciones = Table.SelectRows(
-        Movs,
+    FiltrarRelaciones = Table.SelectRows(
+        Origen,
         each
-            [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI"
-            and [#"TIPO MOV."] = "CRE"
-            and [#"ACTO ADMINIS."] <> null
-            and ObtenerID(
-                [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-            ) <> ""
+            [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"] <> null
+            and [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"] <> null
+            and Text.Trim(Text.From([#"IDENTIFICACION DEL EMISOR / ENDOSANTE"])) <> ""
+            and Text.Trim(Text.From([#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"])) <> ""
+            and [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+                <> [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
     ),
 
-    UltimaAcreditacion =
-        if Table.RowCount(Acreditaciones) > 0
-        then Table.Last(Acreditaciones)
-        else null,
-
-    FechaSRI =
-        if UltimaAcreditacion <> null
-        then UltimaAcreditacion[#"FECHA DE MOV."]
-        else null,
-
-    DebitosPosteriores =
-        if FechaSRI <> null then
-            Table.SelectRows(
-                Movs,
-                each
-                    [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-                    and [#"TIPO MOV."] = "DEB"
-                    and ObtenerID(
-                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-                    ) = Propietario
-                    and ObtenerID(
-                        [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
-                    ) <> ""
-                    and [#"FECHA DE MOV."] > FechaSRI
-            )
-        else
-            #table({}, {}),
-
-    PrimerDebito =
-        if Table.RowCount(DebitosPosteriores) > 0
-        then Table.First(DebitosPosteriores)
-        else null,
-
-    FechaDebito =
-        if PrimerDebito <> null
-        then PrimerDebito[#"FECHA DE MOV."]
-        else null,
-
-    EndososRecibidos =
-        if FechaSRI <> null and FechaDebito <> null then
-            Table.SelectRows(
-                Movs,
-                each
-                    [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
-                    and [#"TIPO MOV."] = "CRE"
-                    and ObtenerID(
-                        [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
-                    ) = Propietario
-                    and ObtenerID(
-                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-                    ) <> ""
-                    and ObtenerID(
-                        [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-                    ) <> Propietario
-                    and [#"FECHA DE MOV."] > FechaSRI
-                    and [#"FECHA DE MOV."] < FechaDebito
-            )
-        else
-            #table({}, {}),
-
-    CantidadEndososRecibidos =
-        Table.RowCount(EndososRecibidos),
-
-    MontoEndososRecibidos =
-        if CantidadEndososRecibidos > 0
-        then List.Sum(EndososRecibidos[MONTO MOV.])
-        else 0,
-
-    SaldoSRI =
-        if UltimaAcreditacion <> null
-        then UltimaAcreditacion[#"SALDO NCD"]
-        else null,
-
-    MontoDebito =
-        if PrimerDebito <> null
-        then PrimerDebito[#"MONTO MOV."]
-        else null,
-
-    Beneficiario =
-        if PrimerDebito <> null
-        then PrimerDebito[
-            #"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
-        ]
-        else null,
-
-    CumpleSaldo =
-        if SaldoSRI <> null and MontoDebito <> null
-        then MontoDebito <= SaldoSRI
-        else false,
-
-    Resultado =
-        if UltimaAcreditacion = null then
-            "SIN ACREDITACION SRI"
-        else if PrimerDebito = null then
-            "SIN ENDOSO REALIZADO"
-        else if CantidadEndososRecibidos > 0 then
-            "NO ES NIVEL 1 - RECIBIO ENDOSOS"
-        else if not CumpleSaldo then
-            "NO ES NIVEL 1 - SALDO INSUFICIENTE"
-        else
-            "NIVEL 1"
-
+    SeleccionarRelaciones = Table.SelectColumns(
+        FiltrarRelaciones,
+        {
+            "IDENTIFICACION EMPLEADO (EF)",
+            "RUC SOCIAL EMPLEADOR",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "CODIGO LIQUID.",
+            "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+            "NOMBRE DEL EMISOR / ENDOSANTE",
+            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+            "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "TIPO MOV.",
+            "NOMBRE MOV.",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "CLASIFICACION_MOVIMIENTO"
+        }
+    )
 in
-    [
-        FECHA_ULTIMA_ACREDITACION = FechaSRI,
-        ACTO_ADMINISTRATIVO =
-            if UltimaAcreditacion <> null
-            then UltimaAcreditacion[#"ACTO ADMINIS."]
-            else null,
-        SALDO_ACREDITACION = SaldoSRI,
-        FECHA_PRIMER_ENDOSO = FechaDebito,
-        MONTO_PRIMER_ENDOSO = MontoDebito,
-        IDENTIFICACION_BENEFICIARIO = Beneficiario,
-        ENDOSOS_RECIBIDOS_INTERMEDIOS = CantidadEndososRecibidos,
-        MONTO_ENDOSOS_RECIBIDOS_INTERMEDIOS = MontoEndososRecibidos,
-        CUMPLE_SALDO = CumpleSaldo,
-        IDENTIFICACION_N1 =
-            if Resultado = "NIVEL 1" then Beneficiario else null,
-        RESULTADO_N1 = Resultado
-    ]
-
+    SeleccionarRelaciones
