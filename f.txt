@@ -1,54 +1,27 @@
+#10
+
 let
-    Origen = qryRedTransacciones,
-
-    ColumnasComparacion = {
-        "IDENTIFICACION EMPLEADO (EF)",
-        "RUC SOCIAL EMPLEADOR",
-        "CODIGO MOV.",
-        "CODIGO LIQUID.",
-        "ACTO ADMINIS.",
-        "FECHA DE MOV.",
-        "EN TRAMA EMISOR",
-        "IDENTIFICACION DEL EMISOR / ENDOSANTE",
-        "NOMBRE DEL EMISOR / ENDOSANTE",
-        "EN TRAMA BENEF.",
-        "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-        "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-        "NOMBRE MOV.",
-        "TIPO MOV.",
-        "MONTO MOV.",
-        "SALDO NCD",
-        "CLASIFICACION_MOVIMIENTO"
-    },
-
-    Seleccionar = Table.SelectColumns(
-        Origen,
-        ColumnasComparacion
-    ),
+    Origen = qryDetalleDuplicado,
 
     Agrupar = Table.Group(
-        Seleccionar,
-        ColumnasComparacion,
+        Origen,
+        {"RUC SOCIAL EMPLEADOR"},
         {
             {
-                "TOTAL_REPETICIONES",
+                "TOTAL_REGISTROS",
                 each Table.RowCount(_),
                 Int64.Type
+            },
+            {
+                "MONTO_UNICO",
+                each List.First(
+                    List.Distinct(
+                        Table.Column(_, "MONTO MOV.")
+                    )
+                ),
+                type nullable number
             }
-        }
-    ),
-
-    FiltrarDuplicados = Table.SelectRows(
-        Agrupar,
-        each [TOTAL_REPETICIONES] > 1
-    ),
-
-    Ordenar = Table.Sort(
-        FiltrarDuplicados,
-        {
-            {"TOTAL_REPETICIONES", Order.Descending},
-            {"CODIGO MOV.", Order.Ascending}
         }
     )
 in
-    Ordenar
+    Agrupar
