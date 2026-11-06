@@ -5,21 +5,23 @@ let
         Origen,
         {
             "IDENTIFICACION EMPLEADO (EF)",
-            "RUC SOCIAL EMPLEADOR"
+            "CODIGO MOV."
         },
         {
             {
-                "CODIGOS_AFECTADOS",
+                "EMPRESAS_RELACIONADAS",
                 each List.Count(
                     List.Distinct(
-                        Table.Column(_, "CODIGO MOV.")
+                        List.RemoveNulls(
+                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                        )
                     )
                 ),
                 Int64.Type
             },
             {
                 "REGISTROS_EXCEDENTES",
-                each List.Sum(
+                each List.Max(
                     List.RemoveNulls(
                         Table.Column(_, "REGISTROS_EXCEDENTES")
                     )
@@ -28,7 +30,7 @@ let
             },
             {
                 "MONTO_EXCEDENTE_CANDIDATO",
-                each List.Sum(
+                each List.Max(
                     List.RemoveNulls(
                         Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
                     )
