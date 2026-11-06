@@ -1,88 +1,33 @@
 let
     Origen = qryAuditoriaDuplicadosExactos,
 
-    Agrupar = Table.Group(
+    Filtrar = Table.SelectRows(
         Origen,
+        each
+            [#"IDENTIFICACION EMPLEADO (EF)"] = "0926877341001"
+            and [#"CODIGO MOV."] = 45493225
+    ),
+
+    Seleccionar = Table.SelectColumns(
+        Filtrar,
         {
             "IDENTIFICACION EMPLEADO (EF)",
-            "CODIGO MOV."
-        },
-        {
-            {
-                "EMPRESAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "REPETICIONES_DISTINTAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "TOTAL_REPETICIONES")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EXCEDENTES_DISTINTOS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "REGISTROS_EXCEDENTES")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTOS_DISTINTOS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_MINIMO",
-                each List.Min(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
-                    )
-                ),
-                type number
-            },
-            {
-                "MONTO_MAXIMO",
-                each List.Max(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
-                    )
-                ),
-                type number
-            }
+            "RUC SOCIAL EMPLEADOR",
+            "CODIGO MOV.",
+            "CODIGO LIQUID.",
+            "ACTO ADMINIS.",
+            "FECHA DE MOV.",
+            "TOTAL_REPETICIONES",
+            "REGISTROS_EXCEDENTES",
+            "MONTO MOV.",
+            "MONTO_EXCEDENTE_CANDIDATO"
         }
     ),
 
-    FiltrarCompartidos = Table.SelectRows(
-        Agrupar,
-        each [EMPRESAS] > 1
-    ),
-
     Ordenar = Table.Sort(
-        FiltrarCompartidos,
+        Seleccionar,
         {
-            {"MONTOS_DISTINTOS", Order.Descending},
-            {"EXCEDENTES_DISTINTOS", Order.Descending}
+            {"RUC SOCIAL EMPLEADOR", Order.Ascending}
         }
     )
 in
