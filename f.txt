@@ -1,52 +1,48 @@
-#12
-
 let
     Origen = qryAuditoriaDuplicadosExactos,
 
-    CodigosUnicos = List.Distinct(
-        Table.Column(Origen, "CODIGO MOV.")
-    ),
-
-    CodigosRepetidos = Table.SelectRows(
+    Agrupar = Table.Group(
         Origen,
-        each [TOTAL_REPETICIONES] > 1
-    ),
-
-    Propietarios = List.Distinct(
-        List.RemoveNulls(
-            Table.Column(Origen, "IDENTIFICACION EMPLEADO (EF)")
-        )
-    ),
-
-    Empresas = List.Distinct(
-        List.RemoveNulls(
-            Table.Column(Origen, "RUC SOCIAL EMPLEADOR")
-        )
-    ),
-
-    TotalRegistros = Table.RowCount(Origen),
-
-    TotalRepeticiones = List.Sum(
-        List.Transform(
-            Table.Column(Origen, "TOTAL_REPETICIONES"),
-            each if _ = null then 0 else _ - 1
-        )
-    ),
-
-    Resultado = #table(
-        {"INDICADOR", "VALOR"},
         {
-            {"CODIGOS_AUDITADOS", List.Count(CodigosUnicos)},
-            {"CODIGOS_CON_REPETICIONES", List.Count(
-                List.Distinct(
-                    Table.Column(CodigosRepetidos, "CODIGO MOV.")
-                )
-            )},
-            {"REGISTROS_AUDITADOS", TotalRegistros},
-            {"PROPIETARIOS_INVOLUCRADOS", List.Count(Propietarios)},
-            {"EMPRESAS_INVOLUCRADAS", List.Count(Empresas)},
-            {"REPETICIONES_ADICIONALES", TotalRepeticiones}
+            "IDENTIFICACION EMPLEADO (EF)",
+            "RUC SOCIAL EMPLEADOR"
+        },
+        {
+            {
+                "CODIGOS_AFECTADOS",
+                each List.Count(
+                    List.Distinct(
+                        Table.Column(_, "CODIGO MOV.")
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "REGISTROS_EXCEDENTES",
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "REGISTROS_EXCEDENTES")
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_EXCEDENTE_CANDIDATO",
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO_EXCEDENTE_CANDIDATO")
+                    )
+                ),
+                type number
+            }
+        }
+    ),
+
+    Ordenar = Table.Sort(
+        Agrupar,
+        {
+            {"MONTO_EXCEDENTE_CANDIDATO", Order.Descending}
         }
     )
 in
-    Resultado
+    Ordenar
