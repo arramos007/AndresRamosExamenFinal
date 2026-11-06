@@ -1,83 +1,54 @@
-cambio 7
-
 let
     Origen = qryRedTransacciones,
 
-    Agrupar = Table.Group(
+    ColumnasComparacion = {
+        "IDENTIFICACION EMPLEADO (EF)",
+        "RUC SOCIAL EMPLEADOR",
+        "CODIGO MOV.",
+        "CODIGO LIQUID.",
+        "ACTO ADMINIS.",
+        "FECHA DE MOV.",
+        "EN TRAMA EMISOR",
+        "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+        "NOMBRE DEL EMISOR / ENDOSANTE",
+        "EN TRAMA BENEF.",
+        "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+        "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+        "NOMBRE MOV.",
+        "TIPO MOV.",
+        "MONTO MOV.",
+        "SALDO NCD",
+        "CLASIFICACION_MOVIMIENTO"
+    },
+
+    Seleccionar = Table.SelectColumns(
         Origen,
-        {"CODIGO MOV."},
+        ColumnasComparacion
+    ),
+
+    Agrupar = Table.Group(
+        Seleccionar,
+        ColumnasComparacion,
         {
-            {"TOTAL_REGISTROS", each Table.RowCount(_), Int64.Type},
+            {
+                "TOTAL_REPETICIONES",
+                each Table.RowCount(_),
+                Int64.Type
+            }
+        }
+    ),
 
-            {"RUC_PROPIETARIOS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "IDENTIFICACION EMPLEADO (EF)")
-                    )
-                ), Int64.Type},
+    FiltrarDuplicados = Table.SelectRows(
+        Agrupar,
+        each [TOTAL_REPETICIONES] > 1
+    ),
 
-            {"EMPRESAS_DISTINTAS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                    )
-                ), Int64.Type},
-
-            {"RELACIONES_EMPLEADO_EMPRESA", each
-                Table.RowCount(
-                    Table.Distinct(
-                        Table.SelectColumns(
-                            _,
-                            {
-                                "IDENTIFICACION EMPLEADO (EF)",
-                                "RUC SOCIAL EMPLEADOR"
-                            }
-                        )
-                    )
-                ), Int64.Type},
-
-            {"FECHAS_DISTINTAS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "FECHA DE MOV.")
-                    )
-                ), Int64.Type},
-
-            {"EMISORES_DISTINTOS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "IDENTIFICACION DEL EMISOR / ENDOSANTE")
-                    )
-                ), Int64.Type},
-
-            {"BENEFICIARIOS_DISTINTOS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION")
-                    )
-                ), Int64.Type},
-
-            {"MONTOS_DISTINTOS", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "MONTO MOV.")
-                    )
-                ), Int64.Type},
-
-            {"TIPOS_MOVIMIENTO", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "TIPO MOV.")
-                    )
-                ), Int64.Type},
-
-            {"CLASIFICACIONES", each
-                List.Count(
-                    List.Distinct(
-                        Table.Column(_, "CLASIFICACION_MOVIMIENTO")
-                    )
-                ), Int64.Type}
+    Ordenar = Table.Sort(
+        FiltrarDuplicados,
+        {
+            {"TOTAL_REPETICIONES", Order.Descending},
+            {"CODIGO MOV.", Order.Ascending}
         }
     )
 in
-    Agrupar
+    Ordenar
