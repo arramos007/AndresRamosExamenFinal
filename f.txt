@@ -1,5 +1,3 @@
-#11
-
 let
     Origen = qryAuditoriaDuplicadosExactos,
 
@@ -9,12 +7,14 @@ let
         {
             {
                 "TOTAL_REGISTROS",
-                each Table.RowCount(_),
+                each List.Sum(
+                    Table.Column(_, "TOTAL_REPETICIONES")
+                ),
                 Int64.Type
             },
             {
                 "REGISTROS_DISTINTOS",
-                each Table.RowCount(Table.Distinct(_)),
+                each Table.RowCount(_),
                 Int64.Type
             },
             {
@@ -57,8 +57,12 @@ let
             },
             {
                 "REPETICIONES_EXACTAS",
-                each Table.RowCount(_) -
-                     Table.RowCount(Table.Distinct(_)),
+                each List.Sum(
+                    List.Transform(
+                        Table.Column(_, "TOTAL_REPETICIONES"),
+                        each _ - 1
+                    )
+                ),
                 Int64.Type
             }
         }
