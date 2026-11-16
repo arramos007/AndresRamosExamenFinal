@@ -1,35 +1,54 @@
 let
     Origen = qryMovimientosClasificados,
 
-    Filtrar = Table.SelectRows(
+    AgruparMovimientos = Table.Group(
         Origen,
-        each [#"CODIGO MOV."] = 45493225
-    ),
-
-    Seleccionar = Table.SelectColumns(
-        Filtrar,
         {
             "IDENTIFICACION EMPLEADO (EF)",
-            "RUC SOCIAL EMPLEADOR",
-            "CODIGO MOV.",
-            "CODIGO LIQUID.",
-            "ACTO ADMINIS.",
-            "FECHA DE MOV.",
-            "IDENTIFICACION DEL EMISOR / ENDOSANTE",
-            "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-            "NOMBRE MOV.",
-            "TIPO MOV.",
-            "MONTO MOV.",
-            "SALDO NCD",
-            "CLASIFICACION_MOVIMIENTO"
+            "CODIGO MOV."
+        },
+        {
+            {
+                "TOTAL_REGISTROS_ORIGEN",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "EMPRESAS_RELACIONADAS",
+                each List.Count(
+                    List.Distinct(
+                        List.Select(
+                            List.Transform(
+                                Table.Column(_, "RUC SOCIAL EMPLEADOR"),
+                                each if _ = null then "" else Text.Trim(Text.From(_))
+                            ),
+                            each _ <> ""
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MOVIMIENTO",
+                each Table.First(_),
+                type record
+            }
         }
     ),
 
-    Ordenar = Table.Sort(
-        Seleccionar,
+    ColumnasMovimiento = List.RemoveItems(
+        Table.ColumnNames(Origen),
         {
-            {"RUC SOCIAL EMPLEADOR", Order.Ascending}
+            "IDENTIFICACION EMPLEADO (EF)",
+            "CODIGO MOV."
         }
+    ),
+
+    ExpandirMovimiento = Table.ExpandRecordColumn(
+        AgruparMovimientos,
+        "MOVIMIENTO",
+        ColumnasMovimiento,
+        ColumnasMovimiento
     )
 in
-    Ordenar
+    ExpandirMovimiento
