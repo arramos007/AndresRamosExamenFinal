@@ -1,37 +1,74 @@
 
 let
-    Origen = qryPerfilParticipantes,
+    Origen = qrySecuenciaAcumuladores,
 
-    MovimientosRelevantes = Table.SelectRows(
+    AgruparParticipantes = Table.Group(
         Origen,
+        {"ID_TITULAR"},
+        {
+            {
+                "FECHA_PRIMERA_ENTRADA",
+                each
+                    let
+                        Entradas = Table.SelectRows(
+                            _,
+                            each [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                        )
+                    in
+                        if Table.IsEmpty(Entradas)
+                        then null
+                        else List.Min(Entradas[#"FECHA DE MOV."]),
+                type nullable datetime
+            },
+            {
+                "FECHA_PRIMERA_SALIDA_EXTERNA",
+                each
+                    let
+                        Salidas = Table.SelectRows(
+                            _,
+                            each [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                        )
+                    in
+                        if Table.IsEmpty(Salidas)
+                        then null
+                        else List.Min(Salidas[#"FECHA DE MOV."]),
+                type nullable datetime
+            },
+            {
+                "TOTAL_ENTRADAS",
+                each Table.RowCount(
+                    Table.SelectRows(
+                        _,
+                        each [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "TOTAL_SALIDAS_EXTERNAS",
+                each Table.RowCount(
+                    Table.SelectRows(
+                        _,
+                        each [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                    )
+                ),
+                Int64.Type
+            }
+        }
+    ),
+
+    ValidarCronologia = Table.AddColumn(
+        AgruparParticipantes,
+        "RESULTADO_SECUENCIA",
         each
-            [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
-            or [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-            or [TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
-    ),
-
-    ColumnasSecuencia = Table.SelectColumns(
-        MovimientosRelevantes,
-        {
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "ID_CONTRAPARTE",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "MONTO MOV.",
-            "TIPO_MOVIMIENTO_RED",
-            "CLAVE_MOVIMIENTO",
-            "ESTADO_TRAZABILIDAD"
-        }
-    ),
-
-    OrdenarSecuencia = Table.Sort(
-        ColumnasSecuencia,
-        {
-            {"ID_TITULAR", Order.Ascending},
-            {"FECHA DE MOV.", Order.Ascending}
-        }
+            if [FECHA_PRIMERA_ENTRADA] = null then "SIN_ENTRADAS"
+            else if [FECHA_PRIMERA_SALIDA_EXTERNA] = null then "SIN_SALIDAS_EXTERNAS"
+            else if [FECHA_PRIMERA_ENTRADA] < [FECHA_PRIMERA_SALIDA_EXTERNA]
+                then "ENTRADA_ANTERIOR_A_SALIDA"
+            else if [FECHA_PRIMERA_ENTRADA] = [FECHA_PRIMERA_SALIDA_EXTERNA]
+                then "MISMA_FECHA_HORA"
+            else "SALIDA_ANTERIOR_A_ENTRADA",
+        type text
     )
 in
-    OrdenarSecuencia
+    ValidarCronologia
