@@ -1,50 +1,45 @@
 
 let
-    Origen = qryTrazabilidadN1,
+    Origen = qryBase,
 
-    BeneficiariosFinales = Table.SelectRows(
+    TiposTexto = {
+        {"REL", type text},
+        {"RELAC.", type text},
+        {"RUC SOCIAL EMPLEADOR", type text},
+        {"RAZON SOCIAL EMPLEADOR", type text},
+        {"IDENTIFICACION EMPLEADO (EF)", type text},
+        {"IDENT. EMPLEADO (EF) - 2", type text},
+        {"NOMBRE EMPLEADO (EF)", type text},
+        {"FALL.", type text},
+        {"CODIGO MOV.", type text},
+        {"CODIGO LIQUID.", type text},
+        {"ACTO ADMINIS.", type text},
+        {"EN TRAMA EMISOR", type text},
+        {"IDENTIFICACION DEL EMISOR / ENDOSANTE", type text},
+        {"NOMBRE DEL EMISOR / ENDOSANTE", type text},
+        {"EN TRAMA BENEF.", type text},
+        {"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION", type text},
+        {"NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION", type text},
+        {"NOMBRE MOV.", type text},
+        {"TIPO MOV.", type text},
+        {"INST.", type text}
+    },
+
+    NormalizarTexto = Table.TransformColumnTypes(
         Origen,
-        each
-            let
-                Normalizar = (Valor as any) as text =>
-                    if Valor = null then ""
-                    else Text.Trim(Text.From(Valor)),
+        TiposTexto,
+        "es-EC"
+    ),
 
-                Clasificacion = Text.Upper(
-                    Normalizar([CLASIFICACION_MOVIMIENTO])
-                ),
-
-                Tipo = Text.Upper(
-                    Normalizar([#"TIPO MOV."])
-                ),
-
-                TramaEmisor = Text.Upper(
-                    Normalizar([#"EN TRAMA EMISOR"])
-                ),
-
-                TramaBeneficiario = Text.Upper(
-                    Normalizar([#"EN TRAMA BENEF."])
-                ),
-
-                RucPropietario = Normalizar(
-                    [#"IDENTIFICACION EMPLEADO (EF)"]
-                ),
-
-                RucEmisor = Normalizar(
-                    [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
-                ),
-
-                RucBeneficiario = Normalizar(
-                    [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
-                )
-            in
-                Clasificacion = "ENDOSO_REALIZADO"
-                and Tipo = "DEB"
-                and TramaEmisor = "T"
-                and TramaBeneficiario = ""
-                and RucPropietario <> ""
-                and RucEmisor = RucPropietario
-                and RucBeneficiario <> ""
+    TiposNumericos = Table.TransformColumnTypes(
+        NormalizarTexto,
+        {
+            {"EDAD", Int64.Type},
+            {"MONTO MOV.", type number},
+            {"SALDO NCD", type number},
+            {"FECHA DE MOV.", type datetime}
+        },
+        "es-EC"
     )
 in
-    BeneficiariosFinales
+    TiposNumericos
