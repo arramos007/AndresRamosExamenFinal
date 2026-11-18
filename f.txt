@@ -1,49 +1,16 @@
+if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+    and [TIPO_FLUJO] = "INTERNO"
+    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
+then "ENTRADA_DESDE_PARTICIPANTE"
 
-let
-    Origen = qryRelacionesParticipantes,
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+    and [TIPO_FLUJO] = "SALIDA_TRAMA"
+    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
+then "SALIDA_A_EXTERNO"
 
-    AgruparEmisores = Table.Group(
-        Origen,
-        {"ID_EMISOR"},
-        {
-            {
-                "TOTAL_MOVIMIENTOS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_BENEFICIARIOS",
-                each List.Count(
-                    List.Distinct([ID_BENEFICIARIO])
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL",
-                each List.Sum(
-                    List.Transform(
-                        [#"MONTO MOV."],
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "FECHA_PRIMER_MOVIMIENTO",
-                each List.Min([#"FECHA DE MOV."]),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMO_MOVIMIENTO",
-                each List.Max([#"FECHA DE MOV."]),
-                type datetime
-            }
-        }
-    ),
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+    and [TIPO_FLUJO] = "INTERNO"
+    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
+then "SALIDA_A_PARTICIPANTE"
 
-    OrdenarEmisores = Table.Sort(
-        AgruparEmisores,
-        {{"MONTO_TOTAL", Order.Descending}}
-    )
-in
-    OrdenarEmisores
+else "OTROS"
