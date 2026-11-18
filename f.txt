@@ -1,15 +1,67 @@
 let
-    Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
-    Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
-    Secuencia = [#"qryValidacionSecuencia.RESULTADO_SECUENCIA"]
+    Origen = qryPerfilParticipantes,
+
+    FiltrarSalidasExternas = Table.SelectRows(
+        Origen,
+        each
+            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+            and [ID_BENEFICIARIO] <> null
+            and [ID_BENEFICIARIO] <> ""
+    ),
+
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarSalidasExternas,
+        {
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "MONTO MOV.",
+            "CLAVE_MOVIMIENTO"
+        }
+    ),
+
+    AgruparBeneficiarios = Table.Group(
+        SeleccionarColumnas,
+        {"ID_BENEFICIARIO"},
+        {
+            {
+                "TOTAL_RECEPCIONES",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_EMISORES",
+                each List.Count(List.Distinct(List.RemoveNulls([ID_EMISOR]))),
+                Int64.Type
+            },
+            {
+                "TOTAL_PARTICIPANTES_ORIGEN",
+                each List.Count(List.Distinct(List.RemoveNulls([ID_TITULAR]))),
+                Int64.Type
+            },
+            {
+                "MONTO_TOTAL_RECIBIDO",
+                each List.Sum(List.RemoveNulls([MONTO MOV.])),
+                type number
+            },
+            {
+                "FECHA_PRIMERA_RECEPCION",
+                each List.Min([FECHA DE MOV.]),
+                type datetime
+            },
+            {
+                "FECHA_ULTIMA_RECEPCION",
+                each List.Max([FECHA DE MOV.]),
+                type datetime
+            }
+        }
+    ),
+
+    OrdenarPorMonto = Table.Sort(
+        AgruparBeneficiarios,
+        {{"MONTO_TOTAL_RECIBIDO", Order.Descending}}
+    )
 in
-    if Entradas > 0 and Salidas > 0 and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA" then
-        "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
-    else if Entradas > 0 and Salidas > 0 then
-        "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
-    else if Entradas > 0 then
-        "CONCENTRADOR"
-    else if Salidas > 0 then
-        "EMISOR_SALIDA_EXTERNA"
-    else
-        "SIN_PERFIL_DE_RED_IDENTIFICADO"
+    OrdenarPorMonto
