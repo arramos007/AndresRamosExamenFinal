@@ -1,87 +1,18 @@
+= Table.AddColumn(
+    #"Se expandió PERFIL_TRANSACCIONAL",
+    "PERFIL_RED",
+    each
+        let
+            Recibidos = [TOTAL_RECIBIDOS_TRAMA],
+            Salidas = [TOTAL_SALIDAS_TRAMA],
 
-let
-    T = [MOVIMIENTOS],
-    RUC = Text.Trim(Text.From([#"IDENTIFICACION EMPLEADO (EF)"])),
-
-    Normalizar = (v as any) as text =>
-        if v = null then "" else Text.Trim(Text.From(v)),
-
-    Filtrar = (condicion as function) as table =>
-        Table.SelectRows(T, each condicion(_)),
-
-    Sumar = (tabla as table) as number =>
-        List.Sum(
-            List.Transform(
-                Table.Column(tabla, "MONTO MOV."),
-                each try Number.From(_) otherwise 0
-            )
-        ),
-
-    Acreditaciones = Filtrar(
-        each [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI"
-    ),
-
-    RecibidosInternos = Filtrar(
-        each
-            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
-            and [#"TIPO MOV."] = "CRE"
-            and Normalizar([#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]) = RUC
-            and Normalizar([#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]) <> RUC
-            and Normalizar([#"EN TRAMA EMISOR"]) = "T"
-            and Normalizar([#"EN TRAMA BENEF."]) = "T"
-    ),
-
-    EndososRealizados = Filtrar(
-        each
-            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-            and [#"TIPO MOV."] = "DEB"
-            and Normalizar([#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]) = RUC
-            and Normalizar([#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]) <> ""
-    ),
-
-    SalidasTrama = Filtrar(
-        each
-            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-            and [#"TIPO MOV."] = "DEB"
-            and Normalizar([#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]) = RUC
-            and Normalizar([#"EN TRAMA EMISOR"]) = "T"
-            and Normalizar([#"EN TRAMA BENEF."]) = ""
-    ),
-
-    BeneficiariosInternos = List.Distinct(
-        List.Select(
-            List.Transform(
-                Table.Column(RecibidosInternos, "IDENTIFICACION DEL EMISOR / ENDOSANTE"),
-                each Normalizar(_)
-            ),
-            each _ <> ""
-        )
-    ),
-
-    BeneficiariosExternos = List.Distinct(
-        List.Select(
-            List.Transform(
-                Table.Column(SalidasTrama, "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"),
-                each Normalizar(_)
-            ),
-            each _ <> ""
-        )
-    )
-
-in
-    [
-        TOTAL_ACREDITACIONES_SRI = Table.RowCount(Acreditaciones),
-        MONTO_ACREDITACIONES_SRI = Sumar(Acreditaciones),
-
-        TOTAL_RECIBIDOS_TRAMA = Table.RowCount(RecibidosInternos),
-        MONTO_RECIBIDO_TRAMA = Sumar(RecibidosInternos),
-
-        TOTAL_ENDOSOS_REALIZADOS = Table.RowCount(EndososRealizados),
-        MONTO_ENDOSOS_REALIZADOS = Sumar(EndososRealizados),
-
-        TOTAL_SALIDAS_TRAMA = Table.RowCount(SalidasTrama),
-        MONTO_SALIDAS_TRAMA = Sumar(SalidasTrama),
-
-        TOTAL_EMISORES_INTERNOS = List.Count(BeneficiariosInternos),
-        TOTAL_BENEFICIARIOS_EXTERNOS = List.Count(BeneficiariosExternos)
-    ]
+            Perfiles = List.RemoveNulls({
+                if Recibidos > 0 then "CONCENTRADOR" else null,
+                if Recibidos > 0 and Salidas > 0 then "ACUMULADOR" else null
+            })
+        in
+            if List.Count(Perfiles) = 0
+            then "SIN PERFIL IDENTIFICADO"
+            else Text.Combine(Perfiles, " | "),
+    type text
+)
