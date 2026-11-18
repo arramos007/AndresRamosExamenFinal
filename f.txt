@@ -1,16 +1,110 @@
-if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
-    and [TIPO_FLUJO] = "INTERNO"
-    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
-then "ENTRADA_DESDE_PARTICIPANTE"
 
-else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-    and [TIPO_FLUJO] = "SALIDA_TRAMA"
-    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
-then "SALIDA_A_EXTERNO"
+let
+    Origen = qryPerfilParticipantes,
 
-else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-    and [TIPO_FLUJO] = "INTERNO"
-    and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
-then "SALIDA_A_PARTICIPANTE"
+    AgruparParticipantes = Table.Group(
+        Origen,
+        {"ID_TITULAR"},
+        {
+            {
+                "TOTAL_MOVIMIENTOS",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_ENTRADAS_INTERNAS",
+                each Table.RowCount(
+                    Table.SelectRows(
+                        _,
+                        (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_ENTRADAS_INTERNAS",
+                each List.Sum(
+                    List.Transform(
+                        Table.Column(
+                            Table.SelectRows(
+                                _,
+                                (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                            ),
+                            "MONTO MOV."
+                        ),
+                        each try Number.From(_) otherwise 0
+                    )
+                ),
+                type number
+            },
+            {
+                "TOTAL_SALIDAS_INTERNAS",
+                each Table.RowCount(
+                    Table.SelectRows(
+                        _,
+                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_SALIDAS_INTERNAS",
+                each List.Sum(
+                    List.Transform(
+                        Table.Column(
+                            Table.SelectRows(
+                                _,
+                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
+                            ),
+                            "MONTO MOV."
+                        ),
+                        each try Number.From(_) otherwise 0
+                    )
+                ),
+                type number
+            },
+            {
+                "TOTAL_SALIDAS_EXTERNAS",
+                each Table.RowCount(
+                    Table.SelectRows(
+                        _,
+                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_SALIDAS_EXTERNAS",
+                each List.Sum(
+                    List.Transform(
+                        Table.Column(
+                            Table.SelectRows(
+                                _,
+                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                            ),
+                            "MONTO MOV."
+                        ),
+                        each try Number.From(_) otherwise 0
+                    )
+                ),
+                type number
+            },
+            {
+                "FECHA_PRIMER_MOVIMIENTO",
+                each List.Min([#"FECHA DE MOV."]),
+                type datetime
+            },
+            {
+                "FECHA_ULTIMO_MOVIMIENTO",
+                each List.Max([#"FECHA DE MOV."]),
+                type datetime
+            }
+        }
+    ),
 
-else "OTROS"
+    OrdenarParticipantes = Table.Sort(
+        AgruparParticipantes,
+        {{"MONTO_ENTRADAS_INTERNAS", Order.Descending}}
+    )
+in
+    OrdenarParticipantes
