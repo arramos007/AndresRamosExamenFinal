@@ -2,16 +2,20 @@
 let
     Origen = qryRelacionesParticipantes,
 
-    AgruparRelaciones = Table.Group(
+    AgruparEmisores = Table.Group(
         Origen,
-        {
-            "ID_EMISOR",
-            "ID_BENEFICIARIO"
-        },
+        {"ID_EMISOR"},
         {
             {
                 "TOTAL_MOVIMIENTOS",
                 each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_BENEFICIARIOS",
+                each List.Count(
+                    List.Distinct([ID_BENEFICIARIO])
+                ),
                 Int64.Type
             },
             {
@@ -37,11 +41,9 @@ let
         }
     ),
 
-    OrdenarRelaciones = Table.Sort(
-        AgruparRelaciones,
-        {
-            {"MONTO_TOTAL", Order.Descending}
-        }
+    OrdenarEmisores = Table.Sort(
+        AgruparEmisores,
+        {{"MONTO_TOTAL", Order.Descending}}
     )
 in
-    OrdenarRelaciones
+    OrdenarEmisores
