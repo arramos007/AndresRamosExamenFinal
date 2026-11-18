@@ -1,13 +1,31 @@
-if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO" then
-    if [ID_TITULAR] = null or [ID_TITULAR] = "" then "SIN_TITULAR"
-    else if [ID_EMISOR] <> [ID_TITULAR] then "EMISOR_NO_COINCIDE_CON_TITULAR"
-    else if [ID_BENEFICIARIO] = null or [ID_BENEFICIARIO] = "" then "SIN_BENEFICIARIO"
-    else "TRAZABILIDAD_COMPLETA"
 
-else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO" then
-    if [ID_TITULAR] = null or [ID_TITULAR] = "" then "SIN_TITULAR"
-    else if [ID_BENEFICIARIO] <> [ID_TITULAR] then "BENEFICIARIO_NO_COINCIDE_CON_TITULAR"
-    else if [ID_EMISOR] = null or [ID_EMISOR] = "" then "SIN_EMISOR"
-    else "TRAZABILIDAD_COMPLETA"
+let
+    Origen = qryModeloMovimientos,
 
-else "NO_APLICA"
+    RelacionesValidas = Table.SelectRows(
+        Origen,
+        each
+            [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
+            and [ID_EMISOR] <> [ID_BENEFICIARIO]
+    ),
+
+    ColumnasRelaciones = Table.SelectColumns(
+        RelacionesValidas,
+        {
+            "CLAVE_MOVIMIENTO",
+            "CODIGO MOV.",
+            "FECHA DE MOV.",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "ID_TITULAR",
+            "ID_CONTRAPARTE",
+            "MONTO MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF."
+        }
+    )
+in
+    ColumnasRelaciones
