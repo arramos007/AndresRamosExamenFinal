@@ -1,29 +1,7 @@
-    ClasificarFlujo = Table.AddColumn(
-        ClasificarMovimientos,
-        "TIPO_FLUJO",
-        each
-            let
-                Emisor = Text.Upper(
-                    Text.Trim(
-                        if [#"EN TRAMA EMISOR"] = null
-                        then ""
-                        else [#"EN TRAMA EMISOR"]
-                    )
-                ),
-                Beneficiario = Text.Upper(
-                    Text.Trim(
-                        if [#"EN TRAMA BENEF."] = null
-                        then ""
-                        else [#"EN TRAMA BENEF."]
-                    )
-                )
-            in
-                if Emisor = "T" and Beneficiario = "T" then "INTERNO"
-                else if Emisor = "T" and Beneficiario = "" then "SALIDA_TRAMA"
-                else if Emisor = "" and Beneficiario = "T" then "ENTRADA_TRAMA"
-                else if Emisor = "" and Beneficiario = "" then "EXTERNO"
-                else "REVISAR_MARCAS",
-        type text
-    )
-in
-    ClasificarFlujo
+if [CLASIFICACION_MOVIMIENTO] = "ACREDITACION_SRI" then "ACREDITACION_ORIGEN_SRI"
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO" and [TIPO_FLUJO] = "INTERNO" then "RECEPCION_INTERNA"
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO" and [TIPO_FLUJO] = "INTERNO" then "TRANSFERENCIA_INTERNA"
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO" and [TIPO_FLUJO] = "SALIDA_TRAMA" then "SALIDA_A_EXTERNO"
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO" and [TIPO_FLUJO] = "ENTRADA_TRAMA" then "ENTRADA_DESDE_EXTERNO"
+else if [CLASIFICACION_MOVIMIENTO] = "UTILIZACION" then "UTILIZACION"
+else "OTROS"
