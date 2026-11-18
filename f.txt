@@ -1,74 +1,15 @@
-
 let
-    Origen = qrySecuenciaAcumuladores,
-
-    AgruparParticipantes = Table.Group(
-        Origen,
-        {"ID_TITULAR"},
-        {
-            {
-                "FECHA_PRIMERA_ENTRADA",
-                each
-                    let
-                        Entradas = Table.SelectRows(
-                            _,
-                            each [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
-                        )
-                    in
-                        if Table.IsEmpty(Entradas)
-                        then null
-                        else List.Min(Entradas[#"FECHA DE MOV."]),
-                type nullable datetime
-            },
-            {
-                "FECHA_PRIMERA_SALIDA_EXTERNA",
-                each
-                    let
-                        Salidas = Table.SelectRows(
-                            _,
-                            each [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-                        )
-                    in
-                        if Table.IsEmpty(Salidas)
-                        then null
-                        else List.Min(Salidas[#"FECHA DE MOV."]),
-                type nullable datetime
-            },
-            {
-                "TOTAL_ENTRADAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        each [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TOTAL_SALIDAS_EXTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        each [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-                    )
-                ),
-                Int64.Type
-            }
-        }
-    ),
-
-    ValidarCronologia = Table.AddColumn(
-        AgruparParticipantes,
-        "RESULTADO_SECUENCIA",
-        each
-            if [FECHA_PRIMERA_ENTRADA] = null then "SIN_ENTRADAS"
-            else if [FECHA_PRIMERA_SALIDA_EXTERNA] = null then "SIN_SALIDAS_EXTERNAS"
-            else if [FECHA_PRIMERA_ENTRADA] < [FECHA_PRIMERA_SALIDA_EXTERNA]
-                then "ENTRADA_ANTERIOR_A_SALIDA"
-            else if [FECHA_PRIMERA_ENTRADA] = [FECHA_PRIMERA_SALIDA_EXTERNA]
-                then "MISMA_FECHA_HORA"
-            else "SALIDA_ANTERIOR_A_ENTRADA",
-        type text
-    )
+    Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
+    Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
+    Secuencia = [RESULTADO_SECUENCIA]
 in
-    ValidarCronologia
+    if Entradas > 0 and Salidas > 0 and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA" then
+        "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
+    else if Entradas > 0 and Salidas > 0 then
+        "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
+    else if Entradas > 0 then
+        "CONCENTRADOR"
+    else if Salidas > 0 then
+        "EMISOR_SALIDA_EXTERNA"
+    else
+        "SIN_PERFIL_DE_RED_IDENTIFICADO"
