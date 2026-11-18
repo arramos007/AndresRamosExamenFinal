@@ -1,18 +1,27 @@
-= Table.AddColumn(
-    #"Se expandió PERFIL_TRANSACCIONAL",
-    "PERFIL_RED",
-    each
-        let
-            Recibidos = [TOTAL_RECIBIDOS_TRAMA],
-            Salidas = [TOTAL_SALIDAS_TRAMA],
+let
+    Origen = qryTrazabilidadN1,
 
-            Perfiles = List.RemoveNulls({
-                if Recibidos > 0 then "CONCENTRADOR" else null,
-                if Recibidos > 0 and Salidas > 0 then "ACUMULADOR" else null
-            })
-        in
-            if List.Count(Perfiles) = 0
-            then "SIN PERFIL IDENTIFICADO"
-            else Text.Combine(Perfiles, " | "),
-    type text
-)
+    BeneficiariosFinales =
+        Table.SelectRows(
+            Origen,
+            each
+                [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+                and Text.Trim(
+                    Text.From(
+                        if [#"EN TRAMA EMISOR"] = null
+                        then ""
+                        else [#"EN TRAMA EMISOR"]
+                    )
+                ) = "T"
+                and Text.Trim(
+                    Text.From(
+                        if [#"EN TRAMA BENEF."] = null
+                        then ""
+                        else [#"EN TRAMA BENEF."]
+                    )
+                ) = ""
+                and [#"IDENTIFICACION DEL EMISOR / ENDOSANTE"]
+                    <> [#"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"]
+        )
+in
+    BeneficiariosFinales
