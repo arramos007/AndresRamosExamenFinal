@@ -2,109 +2,36 @@
 let
     Origen = qryPerfilParticipantes,
 
-    AgruparParticipantes = Table.Group(
+    MovimientosRelevantes = Table.SelectRows(
         Origen,
-        {"ID_TITULAR"},
+        each
+            [TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+            or [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+            or [TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
+    ),
+
+    ColumnasSecuencia = Table.SelectColumns(
+        MovimientosRelevantes,
         {
-            {
-                "TOTAL_MOVIMIENTOS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_ENTRADAS_INTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_ENTRADAS_INTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "TOTAL_SALIDAS_INTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_SALIDAS_INTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "TOTAL_SALIDAS_EXTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_SALIDAS_EXTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "FECHA_PRIMER_MOVIMIENTO",
-                each List.Min([#"FECHA DE MOV."]),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMO_MOVIMIENTO",
-                each List.Max([#"FECHA DE MOV."]),
-                type datetime
-            }
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "ID_CONTRAPARTE",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "MONTO MOV.",
+            "TIPO_MOVIMIENTO_RED",
+            "CLAVE_MOVIMIENTO",
+            "ESTADO_TRAZABILIDAD"
         }
     ),
 
-    OrdenarParticipantes = Table.Sort(
-        AgruparParticipantes,
-        {{"MONTO_ENTRADAS_INTERNAS", Order.Descending}}
+    OrdenarSecuencia = Table.Sort(
+        ColumnasSecuencia,
+        {
+            {"ID_TITULAR", Order.Ascending},
+            {"FECHA DE MOV.", Order.Ascending}
+        }
     )
 in
-    OrdenarParticipantes
+    OrdenarSecuencia
