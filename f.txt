@@ -1,7 +1,7 @@
 let
     Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
     Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
-    Secuencia = [RESULTADO_SECUENCIA]
+    Secuencia = [#"qryValidacionSecuencia.RESULTADO_SECUENCIA"]
 in
     if Entradas > 0 and Salidas > 0 and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA" then
         "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
