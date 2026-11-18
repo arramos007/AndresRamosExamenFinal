@@ -33,27 +33,47 @@ let
             },
             {
                 "TOTAL_EMISORES",
-                each List.Count(List.Distinct(List.RemoveNulls([ID_EMISOR]))),
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_EMISOR")
+                        )
+                    )
+                ),
                 Int64.Type
             },
             {
                 "TOTAL_PARTICIPANTES_ORIGEN",
-                each List.Count(List.Distinct(List.RemoveNulls([ID_TITULAR]))),
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_TITULAR")
+                        )
+                    )
+                ),
                 Int64.Type
             },
             {
                 "MONTO_TOTAL_RECIBIDO",
-                each List.Sum(List.RemoveNulls([MONTO MOV.])),
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO MOV.")
+                    )
+                ),
                 type number
             },
             {
                 "FECHA_PRIMERA_RECEPCION",
-                each List.Min([FECHA DE MOV.]),
+                each List.Min(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
                 type datetime
             },
             {
                 "FECHA_ULTIMA_RECEPCION",
-                each List.Max([FECHA DE MOV.]),
+                each List.Max(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
                 type datetime
             }
         }
