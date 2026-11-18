@@ -40,6 +40,53 @@ let
             {"FECHA DE MOV.", type datetime}
         },
         "es-EC"
+    ),
+
+    ClasificarMovimientos = Table.AddColumn(
+        TiposNumericos,
+        "CLASIFICACION_MOVIMIENTO",
+        each
+            let
+                NombreMovimiento = Text.Upper(
+                    Text.Trim(
+                        if [#"NOMBRE MOV."] = null
+                        then ""
+                        else [#"NOMBRE MOV."]
+                    )
+                ),
+
+                TipoMovimiento = Text.Upper(
+                    Text.Trim(
+                        if [#"TIPO MOV."] = null
+                        then ""
+                        else [#"TIPO MOV."]
+                    )
+                ),
+
+                ActoAdministrativo = Text.Trim(
+                    if [#"ACTO ADMINIS."] = null
+                    then ""
+                    else [#"ACTO ADMINIS."]
+                )
+            in
+                if NombreMovimiento = "EMISION"
+                    and TipoMovimiento = "CRE"
+                    and ActoAdministrativo <> ""
+                then "ACREDITACION_SRI"
+
+                else if NombreMovimiento = "ENDOSO"
+                    and TipoMovimiento = "CRE"
+                then "ENDOSO_RECIBIDO"
+
+                else if NombreMovimiento = "ENDOSO"
+                    and TipoMovimiento = "DEB"
+                then "ENDOSO_REALIZADO"
+
+                else if Text.Contains(NombreMovimiento, "UTILIZ")
+                then "UTILIZACION"
+
+                else "OTROS",
+        type text
     )
 in
-    TiposNumericos
+    ClasificarMovimientos
