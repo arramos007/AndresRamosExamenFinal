@@ -1,31 +1,47 @@
 
 let
-    Origen = qryModeloMovimientos,
+    Origen = qryRelacionesParticipantes,
 
-    RelacionesValidas = Table.SelectRows(
+    AgruparRelaciones = Table.Group(
         Origen,
-        each
-            [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
-            and [ID_EMISOR] <> [ID_BENEFICIARIO]
+        {
+            "ID_EMISOR",
+            "ID_BENEFICIARIO"
+        },
+        {
+            {
+                "TOTAL_MOVIMIENTOS",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "MONTO_TOTAL",
+                each List.Sum(
+                    List.Transform(
+                        [#"MONTO MOV."],
+                        each try Number.From(_) otherwise 0
+                    )
+                ),
+                type number
+            },
+            {
+                "FECHA_PRIMER_MOVIMIENTO",
+                each List.Min([#"FECHA DE MOV."]),
+                type datetime
+            },
+            {
+                "FECHA_ULTIMO_MOVIMIENTO",
+                each List.Max([#"FECHA DE MOV."]),
+                type datetime
+            }
+        }
     ),
 
-    ColumnasRelaciones = Table.SelectColumns(
-        RelacionesValidas,
+    OrdenarRelaciones = Table.Sort(
+        AgruparRelaciones,
         {
-            "CLAVE_MOVIMIENTO",
-            "CODIGO MOV.",
-            "FECHA DE MOV.",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "ID_TITULAR",
-            "ID_CONTRAPARTE",
-            "MONTO MOV.",
-            "TIPO MOV.",
-            "TIPO_FLUJO",
-            "TIPO_OPERACION",
-            "EN TRAMA EMISOR",
-            "EN TRAMA BENEF."
+            {"MONTO_TOTAL", Order.Descending}
         }
     )
 in
-    ColumnasRelaciones
+    OrdenarRelaciones
