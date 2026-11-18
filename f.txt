@@ -1,92 +1,29 @@
-
-let
-    Origen = qryBase,
-
-    TiposTexto = {
-        {"REL", type text},
-        {"RELAC.", type text},
-        {"RUC SOCIAL EMPLEADOR", type text},
-        {"RAZON SOCIAL EMPLEADOR", type text},
-        {"IDENTIFICACION EMPLEADO (EF)", type text},
-        {"IDENT. EMPLEADO (EF) - 2", type text},
-        {"NOMBRE EMPLEADO (EF)", type text},
-        {"FALL.", type text},
-        {"CODIGO MOV.", type text},
-        {"CODIGO LIQUID.", type text},
-        {"ACTO ADMINIS.", type text},
-        {"EN TRAMA EMISOR", type text},
-        {"IDENTIFICACION DEL EMISOR / ENDOSANTE", type text},
-        {"NOMBRE DEL EMISOR / ENDOSANTE", type text},
-        {"EN TRAMA BENEF.", type text},
-        {"IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION", type text},
-        {"NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION", type text},
-        {"NOMBRE MOV.", type text},
-        {"TIPO MOV.", type text},
-        {"INST.", type text}
-    },
-
-    NormalizarTexto = Table.TransformColumnTypes(
-        Origen,
-        TiposTexto,
-        "es-EC"
-    ),
-
-    TiposNumericos = Table.TransformColumnTypes(
-        NormalizarTexto,
-        {
-            {"EDAD", Int64.Type},
-            {"MONTO MOV.", type number},
-            {"SALDO NCD", type number},
-            {"FECHA DE MOV.", type datetime}
-        },
-        "es-EC"
-    ),
-
-    ClasificarMovimientos = Table.AddColumn(
-        TiposNumericos,
-        "CLASIFICACION_MOVIMIENTO",
+    ClasificarFlujo = Table.AddColumn(
+        ClasificarMovimientos,
+        "TIPO_FLUJO",
         each
             let
-                NombreMovimiento = Text.Upper(
+                Emisor = Text.Upper(
                     Text.Trim(
-                        if [#"NOMBRE MOV."] = null
+                        if [#"EN TRAMA EMISOR"] = null
                         then ""
-                        else [#"NOMBRE MOV."]
+                        else [#"EN TRAMA EMISOR"]
                     )
                 ),
-
-                TipoMovimiento = Text.Upper(
+                Beneficiario = Text.Upper(
                     Text.Trim(
-                        if [#"TIPO MOV."] = null
+                        if [#"EN TRAMA BENEF."] = null
                         then ""
-                        else [#"TIPO MOV."]
+                        else [#"EN TRAMA BENEF."]
                     )
-                ),
-
-                ActoAdministrativo = Text.Trim(
-                    if [#"ACTO ADMINIS."] = null
-                    then ""
-                    else [#"ACTO ADMINIS."]
                 )
             in
-                if NombreMovimiento = "EMISION"
-                    and TipoMovimiento = "CRE"
-                    and ActoAdministrativo <> ""
-                then "ACREDITACION_SRI"
-
-                else if NombreMovimiento = "ENDOSO"
-                    and TipoMovimiento = "CRE"
-                then "ENDOSO_RECIBIDO"
-
-                else if NombreMovimiento = "ENDOSO"
-                    and TipoMovimiento = "DEB"
-                then "ENDOSO_REALIZADO"
-
-                else if Text.Contains(NombreMovimiento, "UTILIZ")
-                then "UTILIZACION"
-
-                else "OTROS",
+                if Emisor = "T" and Beneficiario = "T" then "INTERNO"
+                else if Emisor = "T" and Beneficiario = "" then "SALIDA_TRAMA"
+                else if Emisor = "" and Beneficiario = "T" then "ENTRADA_TRAMA"
+                else if Emisor = "" and Beneficiario = "" then "EXTERNO"
+                else "REVISAR_MARCAS",
         type text
     )
 in
-    ClasificarMovimientos
+    ClasificarFlujo
