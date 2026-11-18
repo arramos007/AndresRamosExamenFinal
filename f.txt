@@ -1,12 +1,13 @@
-Text.Combine(
-    {
-        if [#"CODIGO MOV."] = null then "" else Text.Trim([#"CODIGO MOV."]),
-        if [ID_EMISOR] = null then "" else [ID_EMISOR],
-        if [ID_BENEFICIARIO] = null then "" else [ID_BENEFICIARIO],
-        if [#"FECHA DE MOV."] = null then ""
-        else DateTime.ToText([#"FECHA DE MOV."], "yyyyMMddHHmmss"),
-        if [#"MONTO MOV."] = null then ""
-        else Number.ToText([#"MONTO MOV."], "0.00", "en-US")
-    },
-    "|"
-)
+if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO" then
+    if [ID_TITULAR] = null or [ID_TITULAR] = "" then "SIN_TITULAR"
+    else if [ID_EMISOR] <> [ID_TITULAR] then "EMISOR_NO_COINCIDE_CON_TITULAR"
+    else if [ID_BENEFICIARIO] = null or [ID_BENEFICIARIO] = "" then "SIN_BENEFICIARIO"
+    else "TRAZABILIDAD_COMPLETA"
+
+else if [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO" then
+    if [ID_TITULAR] = null or [ID_TITULAR] = "" then "SIN_TITULAR"
+    else if [ID_BENEFICIARIO] <> [ID_TITULAR] then "BENEFICIARIO_NO_COINCIDE_CON_TITULAR"
+    else if [ID_EMISOR] = null or [ID_EMISOR] = "" then "SIN_EMISOR"
+    else "TRAZABILIDAD_COMPLETA"
+
+else "NO_APLICA"
