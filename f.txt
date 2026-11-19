@@ -1,10 +1,22 @@
+
 let
     Origen = qryDetalleEndosos,
 
     // =====================================================
-    // 1. PARAMETROS
+    // 1. PARAMETROS Y TITULARES DISPONIBLES
     // =====================================================
     ToleranciaMinutos = 0.05,
+
+    TitularesDisponibles = List.Buffer(
+        List.Distinct(
+            List.Transform(
+                List.RemoveNulls(
+                    Table.Column(qryModeloMovimientos, "ID_TITULAR")
+                ),
+                each Text.Trim(Text.From(_))
+            )
+        )
+    ),
 
     // =====================================================
     // 2. SEPARAR DEBITOS Y CREDITOS
@@ -72,7 +84,7 @@ let
     ),
 
     // =====================================================
-    // 5. CRUCE POR BENEFICIARIO E IMPORTE
+    // 5. CRUCE POR BENEFICIARIO E IMPORTE EXACTO
     // =====================================================
     CruceInicial = Table.NestedJoin(
         DebitosIndexados,
@@ -127,7 +139,8 @@ let
     AgregarCodigoDebito = Table.AddColumn(
         AgregarFechaDebito,
         "CODIGO_DEBITO",
-        each [#"CODIGO MOV."]
+        each [#"CODIGO MOV."],
+        type any
     ),
 
     AgregarDiferencia = Table.AddColumn(
@@ -173,7 +186,7 @@ let
     ),
 
     // =====================================================
-    // 9. AGREGAR CONTADORES A LAS PAREJAS CANDIDATAS
+    // 9. AGREGAR CONTADORES A LAS PAREJAS
     // =====================================================
     UnirConteoDebitos = Table.NestedJoin(
         AgregarDiferencia,
@@ -208,7 +221,7 @@ let
     ),
 
     // =====================================================
-    // 10. ACEPTAR SOLO PAREJAS UNICAS EN AMBOS SENTIDOS
+    // 10. ACEPTAR PAREJAS UNICAS EN AMBOS SENTIDOS
     // =====================================================
     ParejasConfirmadas = Table.SelectRows(
         ExpandirConteoCreditos,
@@ -281,21 +294,40 @@ let
         }
     ),
 
+    // =====================================================
+    // 12. CLASIFICAR DEBITOS Y VERIFICAR CARTOLA
+    // =====================================================
     ClasificarDebitos = Table.AddColumn(
         ExpandirParejas,
         "ESTADO_CONCILIACION",
         each
-            if [TOTAL_CANDIDATOS_DEBITO] = 0 then
-                "SOLO_DEBITO"
-            else if [ID_CREDITO] = null then
-                "AMBIGUO"
-            else
-                "CONCILIADO",
+            let
+                Beneficiario =
+                    if [ID_CONTRAPARTE_ENDOSO] = null then
+                        ""
+                    else
+                        Text.Trim(
+                            Text.From([ID_CONTRAPARTE_ENDOSO])
+                        ),
+
+                TieneCartola =
+                    List.Contains(
+                        TitularesDisponibles,
+                        Beneficiario
+                    )
+            in
+                if [TOTAL_CANDIDATOS_DEBITO] = 0 then
+                    if TieneCartola then
+                        "PENDIENTE_CONCILIACION"
+                    else
+                        "SIN_CARTOLA_CONTRAPARTE"
+                else if [ID_CREDITO] = null then
+                    "AMBIGUO"
+                else
+                    "CONCILIADO",
         type text
     ),
 
-    // Seleccionar directamente las columnas necesarias.
-    // Se evita crear ID_EMISOR e ID_BENEFICIARIO duplicados.
     SeleccionarDebitos = Table.SelectColumns(
         ClasificarDebitos,
         {
@@ -325,7 +357,7 @@ let
     ),
 
     // =====================================================
-    // 12. IDENTIFICAR CREDITOS SIN PAREJA CONFIRMADA
+    // 13. IDENTIFICAR CREDITOS SIN PAREJA CONFIRMADA
     // =====================================================
     UnirConteoCreditoOriginal = Table.NestedJoin(
         CreditosIndexados,
@@ -372,7 +404,7 @@ let
     ),
 
     // =====================================================
-    // 13. PREPARAR RESULTADO DE CREDITOS
+    // 14. PREPARAR RESULTADO DE CREDITOS
     // =====================================================
     SeleccionarCreditos = Table.SelectColumns(
         ClasificarCreditos,
@@ -420,7 +452,8 @@ let
     AgregarCodigoDebitoCredito = Table.AddColumn(
         AgregarDiferenciaCredito,
         "CODIGO_DEBITO",
-        each null
+        each null,
+        type any
     ),
 
     AgregarConteoDebitoCredito = Table.AddColumn(
@@ -431,7 +464,7 @@ let
     ),
 
     // =====================================================
-    // 14. UNIFICAR ESTRUCTURA DE RESULTADOS
+    // 15. UNIFICAR ESTRUCTURA DE RESULTADOS
     // =====================================================
     ColumnasResultado = {
         "ESTADO_CONCILIACION",
@@ -472,8 +505,6 @@ let
             {"ID_BENEFICIARIO", Order.Ascending},
             {"FECHA_DEBITO", Order.Ascending}
         }
-    ),
-    #"Filas filtradas" = Table.SelectRows(OrdenarResultados, each ([ESTADO_CONCILIACION] = "SOLO_DEBITO")),
-    #"Filas ordenadas" = Table.Sort(#"Filas filtradas",{{"MONTO_OPERACION", Order.Descending}})
+    )
 in
-    #"Filas ordenadas"
+    OrdenarResultados
