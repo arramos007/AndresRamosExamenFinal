@@ -1,62 +1,41 @@
 let
-    Origen = qryParticipacionPerfilesBeneficiario,
+    Origen = qryRankingBeneficiariosAcumuladores,
 
-    AgruparBeneficiarios = Table.Group(
+    CombinarParticipantes = Table.NestedJoin(
         Origen,
         {"ID_BENEFICIARIO"},
+        qryResumenParticipantes,
+        {"ID_TITULAR"},
+        "DatosParticipante",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirParticipantes = Table.ExpandTableColumn(
+        CombinarParticipantes,
+        "DatosParticipante",
         {
-            {
-                "MONTO_TOTAL_RECIBIDO",
-                each List.Sum(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO_TOTAL_BENEFICIARIO")
-                    )
-                ) / Table.RowCount(_),
-                type number
-            },
-            {
-                "MONTO_DESDE_ACUMULADORES_COMPATIBLES",
-                each
-                    List.Sum(
-                        Table.SelectRows(
-                            _,
-                            (r) => r[PERFIL_ORIGEN] =
-                                "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
-                        )[MONTO_TOTAL]
-                    ),
-                type number
-            },
-            {
-                "MOVIMIENTOS_DESDE_ACUMULADORES",
-                each
-                    List.Sum(
-                        Table.SelectRows(
-                            _,
-                            (r) => r[PERFIL_ORIGEN] =
-                                "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
-                        )[TOTAL_MOVIMIENTOS]
-                    ),
-                Int64.Type
-            }
+            "TOTAL_ENTRADAS_INTERNAS",
+            "TOTAL_SALIDAS_EXTERNAS",
+            "MONTO_SALIDAS_EXTERNAS"
+        },
+        {
+            "ENTRADAS_INTERNAS_COMO_TITULAR",
+            "SALIDAS_EXTERNAS_COMO_TITULAR",
+            "MONTO_SALIDAS_COMO_TITULAR"
         }
     ),
 
-    CalcularParticipacion = Table.AddColumn(
-        AgruparBeneficiarios,
-        "PORCENTAJE_DESDE_ACUMULADORES",
+    ClasificarReceptor = Table.AddColumn(
+        ExpandirParticipantes,
+        "COMPORTAMIENTO_RECEPTOR",
         each
-            if [MONTO_TOTAL_RECIBIDO] = 0 then null
+            if [SALIDAS_EXTERNAS_COMO_TITULAR] = null then
+                "NO OBSERVADO COMO TITULAR"
+            else if [SALIDAS_EXTERNAS_COMO_TITULAR] > 0 then
+                "RECEPTOR CON SALIDAS EXTERNAS"
             else
-                [MONTO_DESDE_ACUMULADORES_COMPATIBLES]
-                / [MONTO_TOTAL_RECIBIDO],
-        Percentage.Type
-    ),
-
-    OrdenarResultados = Table.Sort(
-        CalcularParticipacion,
-        {
-            {"MONTO_DESDE_ACUMULADORES_COMPATIBLES", Order.Descending}
-        }
+                "RECEPTOR SIN SALIDAS EXTERNAS OBSERVADAS",
+        type text
     )
 in
-    OrdenarResultados
+    ClasificarReceptor
