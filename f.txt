@@ -1,21 +1,64 @@
 let
     Origen = qryDetalleUtilizaciones,
 
-    AgruparPorEmpresa = Table.Group(
+    AgruparOperaciones = Table.Group(
         Origen,
         {
-            "CLAVE_MOVIMIENTO",
-            "RUC SOCIAL EMPLEADOR",
-            "ID_TITULAR"
+            "CODIGO MOV.",
+            "ID_TITULAR",
+            "FECHA DE MOV.",
+            "MONTO MOV.",
+            "SALDO NCD"
         },
         {
             {
-                "REGISTROS_EN_EMPRESA",
+                "TOTAL_REGISTROS_CARTOLA",
                 each Table.RowCount(_),
                 Int64.Type
             },
             {
-                "MONTO_REGISTRADO",
+                "TOTAL_EMPRESAS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "EMPRESAS",
+                each Text.Combine(
+                    List.Transform(
+                        List.Distinct(
+                            List.RemoveNulls(
+                                Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                            )
+                        ),
+                        Text.From
+                    ),
+                    " | "
+                ),
+                type text
+            },
+            {
+                "RAZONES_SOCIALES",
+                each Text.Combine(
+                    List.Transform(
+                        List.Distinct(
+                            List.RemoveNulls(
+                                Table.Column(_, "RAZON SOCIAL EMPLEADOR")
+                            )
+                        ),
+                        Text.From
+                    ),
+                    " | "
+                ),
+                type text
+            },
+            {
+                "MONTO_OPERACION_CONCILIADO",
                 each List.First(
                     List.RemoveNulls(
                         Table.Column(_, "MONTO MOV.")
@@ -23,33 +66,28 @@ let
                     null
                 ),
                 type number
-            },
-            {
-                "FECHA_PRIMER_REGISTRO",
-                each List.Min(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMO_REGISTRO",
-                each List.Max(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
             }
         }
     ),
 
-    FiltrarRepeticionesInternas = Table.SelectRows(
-        AgruparPorEmpresa,
-        each [REGISTROS_EN_EMPRESA] > 1
+    ClasificarConciliacion = Table.AddColumn(
+        AgruparOperaciones,
+        "ESTADO_CONCILIACION",
+        each
+            if [TOTAL_REGISTROS_CARTOLA] = 1 then
+                "REGISTRO_UNICO"
+            else if [TOTAL_EMPRESAS] > 1 then
+                "COINCIDENCIA_ENTRE_EMPRESAS"
+            else
+                "REPETICION_EN_MISMA_EMPRESA",
+        type text
     ),
 
     OrdenarResultados = Table.Sort(
-        FiltrarRepeticionesInternas,
+        ClasificarConciliacion,
         {
-            {"REGISTROS_EN_EMPRESA", Order.Descending}
+            {"FECHA DE MOV.", Order.Ascending},
+            {"ID_TITULAR", Order.Ascending}
         }
     )
 in
