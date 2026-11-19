@@ -28,14 +28,14 @@ let
 
     RenombrarBeneficiario = Table.RenameColumns(
         ComoBeneficiario,
-        {{"ID_BENEFICIARIO", "ID_PARTICIPANTE"}}
+        {{"ID_BENEFICIARIO", "ID_PARTICIPANTE_RECIBIO"}}
     ),
 
     Combinar = Table.NestedJoin(
         RenombrarEmisor,
         {"ID_PARTICIPANTE"},
         RenombrarBeneficiario,
-        {"ID_PARTICIPANTE"},
+        {"ID_PARTICIPANTE_RECIBIO"},
         "DatosRecepcion",
         JoinKind.FullOuter
     ),
@@ -44,7 +44,7 @@ let
         Combinar,
         "DatosRecepcion",
         {
-            "ID_PARTICIPANTE",
+            "ID_PARTICIPANTE_RECIBIO",
             "TOTAL_TRANSFERENCIAS_RECIBIDAS",
             "MONTO_RECIBIDO",
             "TOTAL_EMISORES"
@@ -54,13 +54,16 @@ let
     UnificarId = Table.AddColumn(
         Expandir,
         "ID_FINAL",
-        each if [ID_PARTICIPANTE] = null then [ID_PARTICIPANTE.1] else [ID_PARTICIPANTE],
+        each
+            if [ID_PARTICIPANTE] = null
+            then [ID_PARTICIPANTE_RECIBIO]
+            else [ID_PARTICIPANTE],
         type text
     ),
 
     Limpiar = Table.RemoveColumns(
         UnificarId,
-        {"ID_PARTICIPANTE", "ID_PARTICIPANTE.1"}
+        {"ID_PARTICIPANTE", "ID_PARTICIPANTE_RECIBIO"}
     ),
 
     RenombrarId = Table.RenameColumns(
@@ -85,9 +88,7 @@ let
 
     Ordenar = Table.Sort(
         ReemplazarNulos,
-        {
-            {"MONTO_RECIBIDO", Order.Descending}
-        }
+        {{"MONTO_RECIBIDO", Order.Descending}}
     )
 in
     Ordenar
