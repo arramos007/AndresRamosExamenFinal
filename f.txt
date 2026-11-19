@@ -1,31 +1,37 @@
 let
     Origen = qryModeloMovimientos,
 
-    FiltrarEntradas = Table.SelectRows(
+    FiltrarEndosos = Table.SelectRows(
         Origen,
         each
-            [ID_TITULAR] = "0915842710001"
-            and [TIPO_OPERACION] = "RECEPCION_INTERNA"
-            and [TIPO_FLUJO] = "INTERNO"
-            and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
-    ),
-
-    MovimientosUnicos = Table.Distinct(
-        FiltrarEntradas,
-        {"CLAVE_MOVIMIENTO"}
+            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
     ),
 
     SeleccionarColumnas = Table.SelectColumns(
-        MovimientosUnicos,
+        FiltrarEndosos,
         {
-            "CLAVE_MOVIMIENTO",
-            "FECHA DE MOV.",
+            "REL",
+            "RELAC.",
+            "RUC SOCIAL EMPLEADOR",
+            "RAZON SOCIAL EMPLEADOR",
+            "IDENTIFICACION EMPLEADO (EF)",
+            "NOMBRE EMPLEADO (EF)",
+            "ID_TITULAR",
             "ID_EMISOR",
             "ID_BENEFICIARIO",
-            "ID_TITULAR",
-            "NOMBRE DEL EMISOR / ENDOSANTE",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
             "MONTO MOV.",
-            "SALDO NCD"
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "CLAVE_MOVIMIENTO",
+            "ESTADO_TRAZABILIDAD"
         }
     ),
 
