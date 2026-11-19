@@ -52,7 +52,7 @@ let
                 each Text.Combine(
                     List.Distinct(
                         List.Transform(
-                            Table.Column(_, "CLASIFICACION_MOVIMIENTO"),
+                            Table.Column(_, "TIPO_OPERACION"),
                             Text.From
                         )
                     ),
