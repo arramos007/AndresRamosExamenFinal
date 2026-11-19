@@ -1,38 +1,61 @@
 let
-    Origen = qryResumenBeneficiariosPerfiles,
+    Origen = qryParticipacionPerfilesBeneficiario,
 
-    CombinarTotales = Table.NestedJoin(
+    AgruparBeneficiarios = Table.Group(
         Origen,
         {"ID_BENEFICIARIO"},
-        qryBeneficiariosExternos,
-        {"ID_BENEFICIARIO"},
-        "TotalesBeneficiario",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirTotales = Table.ExpandTableColumn(
-        CombinarTotales,
-        "TotalesBeneficiario",
-        {"MONTO_TOTAL_RECIBIDO"},
-        {"MONTO_TOTAL_BENEFICIARIO"}
+        {
+            {
+                "MONTO_TOTAL_RECIBIDO",
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO_TOTAL_BENEFICIARIO")
+                    )
+                ) / Table.RowCount(_),
+                type number
+            },
+            {
+                "MONTO_DESDE_ACUMULADORES_COMPATIBLES",
+                each
+                    List.Sum(
+                        Table.SelectRows(
+                            _,
+                            (r) => r[PERFIL_ORIGEN] =
+                                "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
+                        )[MONTO_TOTAL]
+                    ),
+                type number
+            },
+            {
+                "MOVIMIENTOS_DESDE_ACUMULADORES",
+                each
+                    List.Sum(
+                        Table.SelectRows(
+                            _,
+                            (r) => r[PERFIL_ORIGEN] =
+                                "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
+                        )[TOTAL_MOVIMIENTOS]
+                    ),
+                Int64.Type
+            }
+        }
     ),
 
     CalcularParticipacion = Table.AddColumn(
-        ExpandirTotales,
-        "PARTICIPACION_PORCENTUAL",
+        AgruparBeneficiarios,
+        "PORCENTAJE_DESDE_ACUMULADORES",
         each
-            if [MONTO_TOTAL_BENEFICIARIO] = null
-                or [MONTO_TOTAL_BENEFICIARIO] = 0
-            then null
-            else [MONTO_TOTAL] / [MONTO_TOTAL_BENEFICIARIO],
+            if [MONTO_TOTAL_RECIBIDO] = 0 then null
+            else
+                [MONTO_DESDE_ACUMULADORES_COMPATIBLES]
+                / [MONTO_TOTAL_RECIBIDO],
         Percentage.Type
     ),
 
     OrdenarResultados = Table.Sort(
         CalcularParticipacion,
         {
-            {"ID_BENEFICIARIO", Order.Ascending},
-            {"PARTICIPACION_PORCENTUAL", Order.Descending}
+            {"MONTO_DESDE_ACUMULADORES_COMPATIBLES", Order.Descending}
         }
     )
 in
