@@ -1,8 +1,37 @@
+
 let
     Origen = qryPerfilParticipantes,
 
-    AgruparParticipantes = Table.Group(
+    // =====================================================
+    // 1. CONSERVAR CAMPOS NECESARIOS
+    // =====================================================
+    SeleccionarColumnas = Table.SelectColumns(
         Origen,
+        {
+            "ID_TITULAR",
+            "CLAVE_MOVIMIENTO",
+            "TIPO_MOVIMIENTO_RED",
+            "MONTO MOV.",
+            "FECHA DE MOV."
+        }
+    ),
+
+    // =====================================================
+    // 2. ELIMINAR DUPLICADOS POR TITULAR Y MOVIMIENTO
+    // =====================================================
+    MovimientosUnicos = Table.Distinct(
+        SeleccionarColumnas,
+        {
+            "ID_TITULAR",
+            "CLAVE_MOVIMIENTO"
+        }
+    ),
+
+    // =====================================================
+    // 3. AGRUPAR POR PARTICIPANTE
+    // =====================================================
+    AgruparParticipantes = Table.Group(
+        MovimientosUnicos,
         {"ID_TITULAR"},
         {
             {
@@ -15,7 +44,8 @@ let
                 each Table.RowCount(
                     Table.SelectRows(
                         _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                        (r) => r[TIPO_MOVIMIENTO_RED] =
+                            "ENTRADA_DESDE_PARTICIPANTE"
                     )
                 ),
                 Int64.Type
@@ -27,7 +57,8 @@ let
                         Table.Column(
                             Table.SelectRows(
                                 _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "ENTRADA_DESDE_PARTICIPANTE"
+                                (r) => r[TIPO_MOVIMIENTO_RED] =
+                                    "ENTRADA_DESDE_PARTICIPANTE"
                             ),
                             "MONTO MOV."
                         ),
@@ -41,7 +72,8 @@ let
                 each Table.RowCount(
                     Table.SelectRows(
                         _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
+                        (r) => r[TIPO_MOVIMIENTO_RED] =
+                            "SALIDA_A_PARTICIPANTE"
                     )
                 ),
                 Int64.Type
@@ -53,7 +85,8 @@ let
                         Table.Column(
                             Table.SelectRows(
                                 _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_PARTICIPANTE"
+                                (r) => r[TIPO_MOVIMIENTO_RED] =
+                                    "SALIDA_A_PARTICIPANTE"
                             ),
                             "MONTO MOV."
                         ),
@@ -67,7 +100,8 @@ let
                 each Table.RowCount(
                     Table.SelectRows(
                         _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                        (r) => r[TIPO_MOVIMIENTO_RED] =
+                            "SALIDA_A_EXTERNO"
                     )
                 ),
                 Int64.Type
@@ -79,7 +113,8 @@ let
                         Table.Column(
                             Table.SelectRows(
                                 _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+                                (r) => r[TIPO_MOVIMIENTO_RED] =
+                                    "SALIDA_A_EXTERNO"
                             ),
                             "MONTO MOV."
                         ),
@@ -101,9 +136,14 @@ let
         }
     ),
 
+    // =====================================================
+    // 4. ORDENAR PARTICIPANTES
+    // =====================================================
     OrdenarParticipantes = Table.Sort(
         AgruparParticipantes,
-        {{"MONTO_ENTRADAS_INTERNAS", Order.Descending}}
+        {
+            {"MONTO_ENTRADAS_INTERNAS", Order.Descending}
+        }
     )
 in
     OrdenarParticipantes
