@@ -1,162 +1,78 @@
-
 let
-    Origen = qryDetalleEndosos,
+    Origen = qryModeloMovimientos,
 
-    FiltrarLadosValidos = Table.SelectRows(
+    FiltrarEndosos = Table.SelectRows(
         Origen,
         each
-            [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO"
-            or [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO"
+            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
     ),
 
-    CrearClaveConciliacion = Table.AddColumn(
-        FiltrarLadosValidos,
-        "CLAVE_CONCILIACION",
-        each Text.Combine(
-            {
-                if [ID_EMISOR] = null then "" else [ID_EMISOR],
-                if [ID_BENEFICIARIO] = null then "" else [ID_BENEFICIARIO],
-                if [#"FECHA DE MOV."] = null then ""
-                    else DateTime.ToText([#"FECHA DE MOV."], "yyyyMMddHHmmss"),
-                if [#"MONTO MOV."] = null then ""
-                    else Number.ToText([#"MONTO MOV."], "0.################", "en-US")
-            },
-            "|"
-        ),
-        type text
-    ),
-
-    AgruparEndosos = Table.Group(
-        CrearClaveConciliacion,
-        {"CLAVE_CONCILIACION"},
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarEndosos,
         {
-            {
-                "ID_EMISOR",
-                each List.First(List.RemoveNulls([ID_EMISOR]), null),
-                type nullable text
-            },
-            {
-                "ID_BENEFICIARIO",
-                each List.First(List.RemoveNulls([ID_BENEFICIARIO]), null),
-                type nullable text
-            },
-            {
-                "FECHA_OPERACION",
-                each List.Min(List.RemoveNulls([#"FECHA DE MOV."]), null),
-                type nullable datetime
-            },
-            {
-                "MONTO_OPERACION",
-                each List.First(List.RemoveNulls([#"MONTO MOV."]), null),
-                type nullable number
-            },
-            {
-                "TOTAL_REGISTROS_ORIGEN",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_DEBITOS",
-                each List.Count(
-                    List.Distinct(
-                        Table.SelectRows(
-                            _,
-                            each [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO"
-                        )[ID_TITULAR]
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TOTAL_CREDITOS",
-                each List.Count(
-                    List.Distinct(
-                        Table.SelectRows(
-                            _,
-                            each [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO"
-                        )[ID_TITULAR]
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "CODIGOS_MOVIMIENTO",
-                each Text.Combine(
-                    List.Transform(
-                        List.Sort(
-                            List.Distinct(
-                                List.RemoveNulls([#"CODIGO MOV."])
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "RELACIONES",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            List.Transform(
-                                List.RemoveNulls([REL]),
-                                Text.From
-                            )
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "TOTAL_EMPRESAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls([#"RUC SOCIAL EMPLEADOR"])
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EMPRESAS",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            List.Transform(
-                                List.RemoveNulls([#"RUC SOCIAL EMPLEADOR"]),
-                                Text.From
-                            )
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            }
+            "REL",
+            "RELAC.",
+            "RUC SOCIAL EMPLEADOR",
+            "RAZON SOCIAL EMPLEADOR",
+            "IDENTIFICACION EMPLEADO (EF)",
+            "NOMBRE EMPLEADO (EF)",
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "CLAVE_MOVIMIENTO",
+            "ESTADO_TRAZABILIDAD"
         }
     ),
 
-    ClasificarConciliacion = Table.AddColumn(
-        AgruparEndosos,
-        "ESTADO_CONCILIACION",
+    ValidarTitularCartola = Table.AddColumn(
+        SeleccionarColumnas,
+        "VALIDACION_LADO_CARTOLA",
         each
-            if [TOTAL_DEBITOS] > 0 and [TOTAL_CREDITOS] > 0 then
-                "CONCILIADO"
-            else if [TOTAL_DEBITOS] > 0 then
-                "SOLO_DEBITO"
-            else if [TOTAL_CREDITOS] > 0 then
-                "SOLO_CREDITO"
-            else
-                "REVISAR",
+            let
+                Tipo = Text.Upper(Text.Trim(
+                    if [#"TIPO MOV."] = null then ""
+                    else [#"TIPO MOV."]
+                )),
+                Titular = [ID_TITULAR],
+                Emisor = [ID_EMISOR],
+                Beneficiario = [ID_BENEFICIARIO]
+            in
+                if Tipo = "DEB" then
+                    if Titular = Emisor then "DEBITO_VALIDO"
+                    else "DEBITO_NO_COINCIDE_CON_EMISOR"
+                else if Tipo = "CRE" then
+                    if Titular = Beneficiario then "CREDITO_VALIDO"
+                    else "CREDITO_NO_COINCIDE_CON_BENEFICIARIO"
+                else "TIPO_MOVIMIENTO_NO_RECONOCIDO",
         type text
     ),
 
-    OrdenarResultados = Table.Sort(
-        ClasificarConciliacion,
-        {
-            {"MONTO_OPERACION", Order.Descending},
-            {"FECHA_OPERACION", Order.Ascending}
-        }
+    IdentificarContraparte = Table.AddColumn(
+        ValidarTitularCartola,
+        "ID_CONTRAPARTE_ENDOSO",
+        each
+            if [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO" then
+                [ID_BENEFICIARIO]
+            else if [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO" then
+                [ID_EMISOR]
+            else null,
+        type text
+    ),
+
+    OrdenarPorFecha = Table.Sort(
+        IdentificarContraparte,
+        {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
-    OrdenarResultados
+    OrdenarPorFecha
