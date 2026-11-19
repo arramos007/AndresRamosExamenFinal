@@ -1,94 +1,43 @@
 let
-    Origen = qryDetalleUtilizaciones,
+    Original = qryDetalleUtilizaciones,
 
-    AgruparOperaciones = Table.Group(
-        Origen,
+    Conciliado = qryUtilizacionesConciliadas,
+
+    TotalOriginal = List.Sum(
+        List.RemoveNulls(
+            Table.Column(Original, "MONTO MOV.")
+        )
+    ),
+
+    TotalConciliado = List.Sum(
+        List.RemoveNulls(
+            Table.Column(Conciliado, "MONTO_OPERACION_CONCILIADO")
+        )
+    ),
+
+    RegistrosOriginales = Table.RowCount(Original),
+
+    OperacionesConciliadas = Table.RowCount(Conciliado),
+
+    Resultado = #table(
         {
-            "CODIGO MOV.",
-            "ID_TITULAR",
-            "FECHA DE MOV.",
-            "MONTO MOV.",
-            "SALDO NCD"
+            "TOTAL_REGISTROS_ORIGINALES",
+            "TOTAL_OPERACIONES_CONCILIADAS",
+            "MONTO_TOTAL_ORIGINAL",
+            "MONTO_TOTAL_CONCILIADO",
+            "DIFERENCIA_MONETARIA",
+            "REGISTROS_RECONCILIADOS"
         },
         {
             {
-                "TOTAL_REGISTROS_CARTOLA",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_EMPRESAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EMPRESAS",
-                each Text.Combine(
-                    List.Transform(
-                        List.Distinct(
-                            List.RemoveNulls(
-                                Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "RAZONES_SOCIALES",
-                each Text.Combine(
-                    List.Transform(
-                        List.Distinct(
-                            List.RemoveNulls(
-                                Table.Column(_, "RAZON SOCIAL EMPLEADOR")
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "MONTO_OPERACION_CONCILIADO",
-                each List.First(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO MOV.")
-                    ),
-                    null
-                ),
-                type number
+                RegistrosOriginales,
+                OperacionesConciliadas,
+                TotalOriginal,
+                TotalConciliado,
+                TotalOriginal - TotalConciliado,
+                RegistrosOriginales - OperacionesConciliadas
             }
-        }
-    ),
-
-    ClasificarConciliacion = Table.AddColumn(
-        AgruparOperaciones,
-        "ESTADO_CONCILIACION",
-        each
-            if [TOTAL_REGISTROS_CARTOLA] = 1 then
-                "REGISTRO_UNICO"
-            else if [TOTAL_EMPRESAS] > 1 then
-                "COINCIDENCIA_ENTRE_EMPRESAS"
-            else
-                "REPETICION_EN_MISMA_EMPRESA",
-        type text
-    ),
-
-    OrdenarResultados = Table.Sort(
-        ClasificarConciliacion,
-        {
-            {"FECHA DE MOV.", Order.Ascending},
-            {"ID_TITULAR", Order.Ascending}
         }
     )
 in
-    OrdenarResultados
+    Resultado
