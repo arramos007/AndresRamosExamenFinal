@@ -1,51 +1,39 @@
 let
-    Origen = qryPerfilParticipantes,
+    Origen = qryResumenBeneficiariosPerfiles,
 
-    FiltrarSalidasExternas = Table.SelectRows(
+    CombinarTotales = Table.NestedJoin(
         Origen,
-        each
-            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-            and [ID_TITULAR] <> null
-            and [ID_TITULAR] <> ""
-            and [ID_BENEFICIARIO] <> null
-            and [ID_BENEFICIARIO] <> ""
-    ),
-
-    SeleccionarColumnas = Table.SelectColumns(
-        FiltrarSalidasExternas,
-        {
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "MONTO MOV.",
-            "CLAVE_MOVIMIENTO"
-        }
-    ),
-
-    CombinarPerfiles = Table.NestedJoin(
-        SeleccionarColumnas,
-        {"ID_TITULAR"},
-        qryClasificacionParticipantes,
-        {"ID_TITULAR"},
-        "DatosPerfil",
+        {"ID_BENEFICIARIO"},
+        qryBeneficiariosExternos,
+        {"ID_BENEFICIARIO"},
+        "TotalesBeneficiario",
         JoinKind.LeftOuter
     ),
 
-    ExpandirPerfil = Table.ExpandTableColumn(
-        CombinarPerfiles,
-        "DatosPerfil",
-        {"PERFIL_PRELIMINAR"},
-        {"PERFIL_ORIGEN"}
+    ExpandirTotales = Table.ExpandTableColumn(
+        CombinarTotales,
+        "TotalesBeneficiario",
+        {"MONTO_TOTAL_RECIBIDO"},
+        {"MONTO_TOTAL_BENEFICIARIO"}
     ),
 
-    ClasificarPerfil = Table.ReplaceValue(
-        ExpandirPerfil,
-        null,
-        "SIN_PERFIL_CLASIFICADO",
-        Replacer.ReplaceValue,
-        {"PERFIL_ORIGEN"}
+    CalcularParticipacion = Table.AddColumn(
+        ExpandirTotales,
+        "PARTICIPACION_PORCENTUAL",
+        each
+            if [MONTO_TOTAL_BENEFICIARIO] = null
+                or [MONTO_TOTAL_BENEFICIARIO] = 0
+            then null
+            else [MONTO_TOTAL] / [MONTO_TOTAL_BENEFICIARIO],
+        Percentage.Type
+    ),
+
+    OrdenarResultados = Table.Sort(
+        CalcularParticipacion,
+        {
+            {"ID_BENEFICIARIO", Order.Ascending},
+            {"PARTICIPACION_PORCENTUAL", Order.Descending}
+        }
     )
 in
-    ClasificarPerfil
+    OrdenarResultados
