@@ -1,108 +1,43 @@
 let
-    Origen = qryDetalleEndosos,
+    Origen = qryModeloMovimientos,
 
-    AgruparEndosos = Table.Group(
+    FiltrarEndosos = Table.SelectRows(
         Origen,
-        {"CLAVE_MOVIMIENTO"},
+        each
+            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+    ),
+
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarEndosos,
         {
-            {
-                "TOTAL_REGISTROS_CARTOLA",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_EMPRESAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EMPRESAS",
-                each Text.Combine(
-                    List.Transform(
-                        List.Distinct(
-                            List.RemoveNulls(
-                                Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "TOTAL_TITULARES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_TITULAR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TIPOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Distinct(
-                        List.Transform(
-                            Table.Column(_, "TIPO_OPERACION"),
-                            Text.From
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "FLUJOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Distinct(
-                        List.Transform(
-                            Table.Column(_, "TIPO_FLUJO"),
-                            Text.From
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "MONTO_OPERACION",
-                each List.First(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO MOV.")
-                    ),
-                    null
-                ),
-                type number
-            },
-            {
-                "FECHA_OPERACION",
-                each List.Min(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
-            }
+            "REL",
+            "RELAC.",
+            "RUC SOCIAL EMPLEADOR",
+            "RAZON SOCIAL EMPLEADOR",
+            "IDENTIFICACION EMPLEADO (EF)",
+            "NOMBRE EMPLEADO (EF)",
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "CLAVE_MOVIMIENTO",
+            "ESTADO_TRAZABILIDAD"
         }
     ),
 
-    FiltrarCoincidencias = Table.SelectRows(
-        AgruparEndosos,
-        each [TOTAL_REGISTROS_CARTOLA] > 1
-    ),
-
-    OrdenarResultados = Table.Sort(
-        FiltrarCoincidencias,
-        {
-            {"TOTAL_REGISTROS_CARTOLA", Order.Descending}
-        }
+    OrdenarPorFecha = Table.Sort(
+        SeleccionarColumnas,
+        {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
-    OrdenarResultados
+    OrdenarPorFecha
