@@ -1,28 +1,48 @@
 let
-    Origen = qryClasificacionRedInterna,
+    Origen = qryModeloMovimientos,
 
-    FiltrarCandidatos = Table.SelectRows(
+    FilasFiltradas = Table.SelectRows(
         Origen,
         each
-            [PERFIL_RED_PRELIMINAR] =
-                "RECEPTOR_Y_ACUMULADOR_COMPATIBLE"
+            [TIPO_OPERACION] = "SALIDA_A_EXTERNO"
+            and [ID_BENEFICIARIO] = "1790368718001"
     ),
 
-    CalcularPorcentajeSalida = Table.AddColumn(
-        FiltrarCandidatos,
-        "PORCENTAJE_SALIDA_SOBRE_RECIBIDO",
-        each
-            if [MONTO_RECIBIDO] = null or [MONTO_RECIBIDO] = 0
-            then null
-            else [MONTO_SALIDAS_EXTERNAS] / [MONTO_RECIBIDO],
-        Percentage.Type
+    MovimientosUnicos = Table.Distinct(
+        FilasFiltradas,
+        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
     ),
 
-    Ordenar = Table.Sort(
-        CalcularPorcentajeSalida,
+    AgruparParticipantes = Table.Group(
+        MovimientosUnicos,
+        {"ID_TITULAR"},
         {
-            {"MONTO_RECIBIDO", Order.Descending}
+            {
+                "TOTAL_MOVIMIENTOS",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "MONTO_TOTAL",
+                each List.Sum(List.RemoveNulls([#"MONTO MOV."])),
+                type nullable number
+            },
+            {
+                "FECHA_PRIMERA_SALIDA",
+                each List.Min(List.RemoveNulls([#"FECHA DE MOV."])),
+                type nullable datetime
+            },
+            {
+                "FECHA_ULTIMA_SALIDA",
+                each List.Max(List.RemoveNulls([#"FECHA DE MOV."])),
+                type nullable datetime
+            }
         }
+    ),
+
+    OrdenarResultados = Table.Sort(
+        AgruparParticipantes,
+        {{"MONTO_TOTAL", Order.Descending}}
     )
 in
-    Ordenar
+    OrdenarResultados
