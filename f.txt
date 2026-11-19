@@ -1,48 +1,37 @@
 let
     Origen = qryModeloMovimientos,
 
-    FilasFiltradas = Table.SelectRows(
+    FiltrarEntradas = Table.SelectRows(
         Origen,
         each
-            [TIPO_OPERACION] = "SALIDA_A_EXTERNO"
-            and [ID_BENEFICIARIO] = "1790368718001"
+            [ID_TITULAR] = "0915842710001"
+            and [TIPO_OPERACION] = "RECEPCION_INTERNA"
+            and [TIPO_FLUJO] = "INTERNO"
+            and [ESTADO_TRAZABILIDAD] = "TRAZABILIDAD_COMPLETA"
     ),
 
     MovimientosUnicos = Table.Distinct(
-        FilasFiltradas,
-        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
+        FiltrarEntradas,
+        {"CLAVE_MOVIMIENTO"}
     ),
 
-    AgruparParticipantes = Table.Group(
+    SeleccionarColumnas = Table.SelectColumns(
         MovimientosUnicos,
-        {"ID_TITULAR"},
         {
-            {
-                "TOTAL_MOVIMIENTOS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL",
-                each List.Sum(List.RemoveNulls([#"MONTO MOV."])),
-                type nullable number
-            },
-            {
-                "FECHA_PRIMERA_SALIDA",
-                each List.Min(List.RemoveNulls([#"FECHA DE MOV."])),
-                type nullable datetime
-            },
-            {
-                "FECHA_ULTIMA_SALIDA",
-                each List.Max(List.RemoveNulls([#"FECHA DE MOV."])),
-                type nullable datetime
-            }
+            "CLAVE_MOVIMIENTO",
+            "FECHA DE MOV.",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "ID_TITULAR",
+            "NOMBRE DEL EMISOR / ENDOSANTE",
+            "MONTO MOV.",
+            "SALDO NCD"
         }
     ),
 
-    OrdenarResultados = Table.Sort(
-        AgruparParticipantes,
-        {{"MONTO_TOTAL", Order.Descending}}
+    OrdenarPorFecha = Table.Sort(
+        SeleccionarColumnas,
+        {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
-    OrdenarResultados
+    OrdenarPorFecha
