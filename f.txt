@@ -1,41 +1,34 @@
 let
-    Origen = qryRankingBeneficiariosAcumuladores,
+    Origen = qryModeloMovimientos,
 
-    CombinarParticipantes = Table.NestedJoin(
+    FiltrarUtilizaciones = Table.SelectRows(
         Origen,
-        {"ID_BENEFICIARIO"},
-        qryResumenParticipantes,
-        {"ID_TITULAR"},
-        "DatosParticipante",
-        JoinKind.LeftOuter
+        each [CLASIFICACION_MOVIMIENTO] = "UTILIZACION"
     ),
 
-    ExpandirParticipantes = Table.ExpandTableColumn(
-        CombinarParticipantes,
-        "DatosParticipante",
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarUtilizaciones,
         {
-            "TOTAL_ENTRADAS_INTERNAS",
-            "TOTAL_SALIDAS_EXTERNAS",
-            "MONTO_SALIDAS_EXTERNAS"
-        },
-        {
-            "ENTRADAS_INTERNAS_COMO_TITULAR",
-            "SALIDAS_EXTERNAS_COMO_TITULAR",
-            "MONTO_SALIDAS_COMO_TITULAR"
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "CLAVE_MOVIMIENTO"
         }
     ),
 
-    ClasificarReceptor = Table.AddColumn(
-        ExpandirParticipantes,
-        "COMPORTAMIENTO_RECEPTOR",
-        each
-            if [SALIDAS_EXTERNAS_COMO_TITULAR] = null then
-                "NO OBSERVADO COMO TITULAR"
-            else if [SALIDAS_EXTERNAS_COMO_TITULAR] > 0 then
-                "RECEPTOR CON SALIDAS EXTERNAS"
-            else
-                "RECEPTOR SIN SALIDAS EXTERNAS OBSERVADAS",
-        type text
+    OrdenarPorFecha = Table.Sort(
+        SeleccionarColumnas,
+        {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
-    ClasificarReceptor
+    OrdenarPorFecha
