@@ -1,38 +1,87 @@
 let
-    Origen = qryModeloMovimientos,
+    Origen = qryDetalleUtilizaciones,
 
-    FiltrarUtilizaciones = Table.SelectRows(
+    AgruparOperaciones = Table.Group(
         Origen,
-        each [CLASIFICACION_MOVIMIENTO] = "UTILIZACION"
-    ),
-
-    SeleccionarColumnas = Table.SelectColumns(
-        FiltrarUtilizaciones,
+        {"CLAVE_MOVIMIENTO"},
         {
-            "RUC SOCIAL EMPLEADOR",
-            "RAZON SOCIAL EMPLEADOR",
-            "IDENTIFICACION EMPLEADO (EF)",
-            "NOMBRE EMPLEADO (EF)",
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "NOMBRE MOV.",
-            "TIPO MOV.",
-            "TIPO_FLUJO",
-            "TIPO_OPERACION",
-            "MONTO MOV.",
-            "SALDO NCD",
-            "EN TRAMA EMISOR",
-            "EN TRAMA BENEF.",
-            "CLAVE_MOVIMIENTO"
+            {
+                "TOTAL_REGISTROS_CARTOLA",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_EMPRESAS",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "EMPRESAS",
+                each Text.Combine(
+                    List.Transform(
+                        List.Distinct(
+                            List.RemoveNulls(
+                                Table.Column(_, "RUC SOCIAL EMPLEADOR")
+                            )
+                        ),
+                        Text.From
+                    ),
+                    " | "
+                ),
+                type text
+            },
+            {
+                "TOTAL_TITULARES",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_TITULAR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_OPERACION",
+                each List.First(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO MOV.")
+                    ),
+                    null
+                ),
+                type number
+            }
         }
     ),
 
-    OrdenarPorFecha = Table.Sort(
-        SeleccionarColumnas,
-        {{"FECHA DE MOV.", Order.Ascending}}
+    FiltrarRepeticiones = Table.SelectRows(
+        AgruparOperaciones,
+        each [TOTAL_REGISTROS_CARTOLA] > 1
+    ),
+
+    ClasificarCoincidencia = Table.AddColumn(
+        FiltrarRepeticiones,
+        "TIPO_COINCIDENCIA",
+        each
+            if [TOTAL_EMPRESAS] > 1 then
+                "PRESENTE_EN_VARIAS_EMPRESAS"
+            else
+                "REPETIDO_EN_MISMA_EMPRESA",
+        type text
+    ),
+
+    OrdenarResultados = Table.Sort(
+        ClasificarCoincidencia,
+        {
+            {"TOTAL_EMPRESAS", Order.Descending},
+            {"TOTAL_REGISTROS_CARTOLA", Order.Descending}
+        }
     )
 in
-    OrdenarPorFecha
+    OrdenarResultados
