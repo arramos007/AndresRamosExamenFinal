@@ -1,128 +1,329 @@
 
 let
-    Origen = qryModeloMovimientos,
+    Origen = qryDetalleEndosos,
 
-    FiltrarEndosos = Table.SelectRows(
+    // Parámetro temporal inicial: 10 minutos
+    ToleranciaMinutos = 10,
+
+    // Separar movimientos de débito y crédito
+    DebitosOrigen = Table.SelectRows(
         Origen,
         each
-            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
-            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
+            [TIPO_CARTOLA] = "DEB"
+            and [ID_EMISOR_CARTOLA] <> null
+            and [ID_CONTRAPARTE_ENDOSO] <> null
+            and [MONTO MOV.] <> null
+            and [FECHA DE MOV.] <> null
     ),
 
-    SeleccionarColumnas = Table.SelectColumns(
-        FiltrarEndosos,
+    CreditosOrigen = Table.SelectRows(
+        Origen,
+        each
+            [TIPO_CARTOLA] = "CRE"
+            and [ID_BENEFICIARIO_CARTOLA] <> null
+            and [MONTO MOV.] <> null
+            and [FECHA DE MOV.] <> null
+    ),
+
+    // Eliminar duplicaciones administrativas dentro de cada cartola.
+    // El código se utiliza únicamente para distinguir registros
+    // dentro de su propia cartola, nunca para cruzar DEB con CRE.
+    DebitosUnicos = Table.Distinct(
+        DebitosOrigen,
         {
-            "REL",
-            "RELAC.",
-            "RUC SOCIAL EMPLEADOR",
-            "RAZON SOCIAL EMPLEADOR",
-            "IDENTIFICACION EMPLEADO (EF)",
-            "NOMBRE EMPLEADO (EF)",
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "NOMBRE MOV.",
-            "TIPO MOV.",
-            "TIPO_FLUJO",
-            "TIPO_OPERACION",
+            "ID_EMISOR_CARTOLA",
+            "ID_CONTRAPARTE_ENDOSO",
             "MONTO MOV.",
-            "SALDO NCD",
-            "EN TRAMA EMISOR",
-            "EN TRAMA BENEF.",
-            "CLAVE_MOVIMIENTO",
-            "ESTADO_TRAZABILIDAD"
+            "FECHA DE MOV.",
+            "CODIGO MOV."
         }
     ),
 
-    NormalizarTipo = Table.AddColumn(
-        SeleccionarColumnas,
-        "TIPO_CARTOLA",
+    CreditosUnicos = Table.Distinct(
+        CreditosOrigen,
+        {
+            "ID_BENEFICIARIO_CARTOLA",
+            "MONTO MOV.",
+            "FECHA DE MOV.",
+            "CODIGO MOV."
+        }
+    ),
+
+    // Índices internos para identificar cada registro
+    DebitosIndexados = Table.AddIndexColumn(
+        DebitosUnicos,
+        "ID_DEBITO",
+        1,
+        1,
+        Int64.Type
+    ),
+
+    CreditosIndexados = Table.AddIndexColumn(
+        CreditosUnicos,
+        "ID_CREDITO",
+        1,
+        1,
+        Int64.Type
+    ),
+
+    // Buscar candidatos de crédito para cada débito.
+    // Se compara beneficiario, importe y ventana temporal.
+    BuscarCandidatos = Table.AddColumn(
+        DebitosIndexados,
+        "CANDIDATOS",
         each
-            Text.Upper(
-                Text.Trim(
-                    if [#"TIPO MOV."] = null
-                    then ""
-                    else Text.From([#"TIPO MOV."])
+            let
+                Debito = _,
+                Candidatos = Table.SelectRows(
+                    CreditosIndexados,
+                    (Credito) =>
+                        Credito[ID_BENEFICIARIO_CARTOLA]
+                            = Debito[ID_CONTRAPARTE_ENDOSO]
+                        and Credito[#"MONTO MOV."]
+                            = Debito[#"MONTO MOV."]
+                        and Number.Abs(
+                            Duration.TotalMinutes(
+                                Credito[#"FECHA DE MOV."]
+                                - Debito[#"FECHA DE MOV."]
+                            )
+                        ) <= ToleranciaMinutos
                 )
+            in
+                Candidatos
+    ),
+
+    ContarCandidatos = Table.AddColumn(
+        BuscarCandidatos,
+        "TOTAL_CANDIDATOS",
+        each Table.RowCount([CANDIDATOS]),
+        Int64.Type
+    ),
+
+    ObtenerCreditoCandidato = Table.AddColumn(
+        ContarCandidatos,
+        "ID_CREDITO_CANDIDATO",
+        each
+            if [TOTAL_CANDIDATOS] = 1
+            then [CANDIDATOS]{0}[ID_CREDITO]
+            else null,
+        Int64.Type
+    ),
+
+    // Verificar que un crédito no esté siendo reclamado
+    // por más de un débito.
+    ContarDebitosPorCredito = Table.AddColumn(
+        ObtenerCreditoCandidato,
+        "TOTAL_DEBITOS_POR_CREDITO",
+        each
+            let
+                CreditoId = [ID_CREDITO_CANDIDATO],
+                Coincidencias =
+                    if CreditoId = null then
+                        0
+                    else
+                        Table.RowCount(
+                            Table.SelectRows(
+                                ObtenerCreditoCandidato,
+                                (Debito) =>
+                                    Debito[ID_CREDITO_CANDIDATO]
+                                        = CreditoId
+                            )
+                        )
+            in
+                Coincidencias,
+        Int64.Type
+    ),
+
+    ClasificarDebitos = Table.AddColumn(
+        ContarDebitosPorCredito,
+        "ESTADO_CONCILIACION",
+        each
+            if [TOTAL_CANDIDATOS] = 0 then
+                "SOLO_DEBITO"
+            else if [TOTAL_CANDIDATOS] > 1 then
+                "AMBIGUO_DEBITO"
+            else if [TOTAL_DEBITOS_POR_CREDITO] > 1 then
+                "AMBIGUO_CREDITO"
+            else
+                "CONCILIADO",
+        type text
+    ),
+
+    // Obtener información del crédito únicamente
+    // cuando la correspondencia es inequívoca.
+    ObtenerDatosCredito = Table.AddColumn(
+        ClasificarDebitos,
+        "DATOS_CREDITO",
+        each
+            if [ESTADO_CONCILIACION] = "CONCILIADO" then
+                Table.SelectRows(
+                    CreditosIndexados,
+                    (Credito) =>
+                        Credito[ID_CREDITO]
+                            = [ID_CREDITO_CANDIDATO]
+                ){0}
+            else
+                null
+    ),
+
+    AgregarFechaCredito = Table.AddColumn(
+        ObtenerDatosCredito,
+        "FECHA_CREDITO",
+        each
+            if [DATOS_CREDITO] = null
+            then null
+            else [DATOS_CREDITO][#"FECHA DE MOV."],
+        type nullable datetime
+    ),
+
+    AgregarCodigoCredito = Table.AddColumn(
+        AgregarFechaCredito,
+        "CODIGO_CREDITO",
+        each
+            if [DATOS_CREDITO] = null
+            then null
+            else [DATOS_CREDITO][#"CODIGO MOV."],
+        type any
+    ),
+
+    AgregarDiferenciaTiempo = Table.AddColumn(
+        AgregarCodigoCredito,
+        "DIFERENCIA_MINUTOS",
+        each
+            if [FECHA_CREDITO] = null then
+                null
+            else
+                Number.Abs(
+                    Duration.TotalMinutes(
+                        [FECHA_CREDITO] - [#"FECHA DE MOV."]
+                    )
+                ),
+        type nullable number
+    ),
+
+    ResultadoDebitos = Table.SelectColumns(
+        AgregarDiferenciaTiempo,
+        {
+            "ESTADO_CONCILIACION",
+            "ID_EMISOR_CARTOLA",
+            "ID_CONTRAPARTE_ENDOSO",
+            "MONTO MOV.",
+            "FECHA DE MOV.",
+            "FECHA_CREDITO",
+            "DIFERENCIA_MINUTOS",
+            "CODIGO MOV.",
+            "CODIGO_CREDITO",
+            "TOTAL_CANDIDATOS",
+            "TOTAL_DEBITOS_POR_CREDITO"
+        }
+    ),
+
+    RenombrarDebitos = Table.RenameColumns(
+        ResultadoDebitos,
+        {
+            {"ID_EMISOR_CARTOLA", "ID_EMISOR"},
+            {"ID_CONTRAPARTE_ENDOSO", "ID_BENEFICIARIO"},
+            {"MONTO MOV.", "MONTO_OPERACION"},
+            {"FECHA DE MOV.", "FECHA_DEBITO"},
+            {"CODIGO MOV.", "CODIGO_DEBITO"}
+        }
+    ),
+
+    // Identificar créditos que no quedaron conciliados.
+    // Los que tienen candidatos, pero no una pareja confirmada,
+    // se clasifican como ambiguos.
+    CreditosConEstado = Table.AddColumn(
+        CreditosIndexados,
+        "ESTADO_CONCILIACION",
+        each
+            let
+                Credito = _,
+                DebitosCandidatos = Table.SelectRows(
+                    ObtenerDatosCredito,
+                    (Debito) =>
+                        Table.RowCount(
+                            Table.SelectRows(
+                                Debito[CANDIDATOS],
+                                (C) =>
+                                    C[ID_CREDITO] = Credito[ID_CREDITO]
+                            )
+                        ) > 0
+                )
+            in
+                if Table.RowCount(DebitosCandidatos) = 0 then
+                    "SOLO_CREDITO"
+                else
+                    "AMBIGUO_CREDITO",
+        type text
+    ),
+
+    CreditosSinConciliar = Table.SelectRows(
+        CreditosConEstado,
+        each [ESTADO_CONCILIACION] <> "CONCILIADO"
+    ),
+
+    ResultadoCreditos = Table.AddColumn(
+        CreditosSinConciliar,
+        "DIFERENCIA_MINUTOS",
+        each null,
+        type nullable number
+    ),
+
+    CreditosNormalizados = Table.SelectColumns(
+        Table.AddColumn(
+            Table.AddColumn(
+                Table.AddColumn(
+                    ResultadoCreditos,
+                    "FECHA_DEBITO",
+                    each null,
+                    type nullable datetime
+                ),
+                "CODIGO_DEBITO",
+                each null
             ),
-        type text
+            "TOTAL_DEBITOS_POR_CREDITO",
+            each null,
+            Int64.Type
+        ),
+        {
+            "ESTADO_CONCILIACION",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO_CARTOLA",
+            "MONTO MOV.",
+            "FECHA_DEBITO",
+            "FECHA DE MOV.",
+            "DIFERENCIA_MINUTOS",
+            "CODIGO_DEBITO",
+            "CODIGO MOV.",
+            "TOTAL_CANDIDATOS",
+            "TOTAL_DEBITOS_POR_CREDITO"
+        }
     ),
 
-    IdentificarTitularCartola = Table.AddColumn(
-        NormalizarTipo,
-        "ID_EMISOR_CARTOLA",
-        each
-            if [TIPO_CARTOLA] = "DEB"
-            then [ID_TITULAR]
-            else null,
-        type text
+    RenombrarCreditos = Table.RenameColumns(
+        CreditosNormalizados,
+        {
+            {"ID_BENEFICIARIO_CARTOLA", "ID_BENEFICIARIO"},
+            {"MONTO MOV.", "MONTO_OPERACION"},
+            {"FECHA DE MOV.", "FECHA_CREDITO"},
+            {"CODIGO MOV.", "CODIGO_CREDITO"}
+        }
     ),
 
-    IdentificarBeneficiarioCartola = Table.AddColumn(
-        IdentificarTitularCartola,
-        "ID_BENEFICIARIO_CARTOLA",
-        each
-            if [TIPO_CARTOLA] = "CRE"
-            then [ID_TITULAR]
-            else null,
-        type text
+    CombinarResultados = Table.Combine(
+        {
+            RenombrarDebitos,
+            RenombrarCreditos
+        }
     ),
 
-    NombreEmisorCartola = Table.AddColumn(
-        IdentificarBeneficiarioCartola,
-        "NOMBRE_EMISOR_CARTOLA",
-        each
-            if [TIPO_CARTOLA] = "DEB"
-            then [#"NOMBRE EMPLEADO (EF)"]
-            else null,
-        type text
-    ),
-
-    NombreBeneficiarioCartola = Table.AddColumn(
-        NombreEmisorCartola,
-        "NOMBRE_BENEFICIARIO_CARTOLA",
-        each
-            if [TIPO_CARTOLA] = "CRE"
-            then [#"NOMBRE EMPLEADO (EF)"]
-            else null,
-        type text
-    ),
-
-    ValidarTitularCartola = Table.AddColumn(
-        NombreBeneficiarioCartola,
-        "VALIDACION_LADO_CARTOLA",
-        each
-            if [TIPO_CARTOLA] = "DEB" then
-                if [ID_TITULAR] = [ID_EMISOR]
-                then "DEBITO_VALIDO"
-                else "DEBITO_REVISAR_IDENTIFICADOR"
-            else if [TIPO_CARTOLA] = "CRE" then
-                if [ID_TITULAR] = [ID_BENEFICIARIO]
-                then "CREDITO_VALIDO"
-                else "CREDITO_REVISAR_IDENTIFICADOR"
-            else
-                "TIPO_MOVIMIENTO_NO_RECONOCIDO",
-        type text
-    ),
-
-    IdentificarContraparte = Table.AddColumn(
-        ValidarTitularCartola,
-        "ID_CONTRAPARTE_ENDOSO",
-        each
-            if [TIPO_CARTOLA] = "DEB" then
-                [ID_BENEFICIARIO]
-            else if [TIPO_CARTOLA] = "CRE" then
-                [ID_EMISOR]
-            else
-                null,
-        type text
-    ),
-
-    OrdenarPorFecha = Table.Sort(
-        IdentificarContraparte,
-        {{"FECHA DE MOV.", Order.Ascending}}
+    OrdenarResultados = Table.Sort(
+        CombinarResultados,
+        {
+            {"ESTADO_CONCILIACION", Order.Ascending},
+            {"ID_EMISOR", Order.Ascending},
+            {"ID_BENEFICIARIO", Order.Ascending}
+        }
     )
 in
-    OrdenarPorFecha
+    OrdenarResultados
