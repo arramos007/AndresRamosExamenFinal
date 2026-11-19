@@ -1,91 +1,28 @@
 let
-    Origen = qryResumenRedInterna,
+    Origen = qryClasificacionRedInterna,
 
-    CombinarParticipantes = Table.NestedJoin(
+    FiltrarCandidatos = Table.SelectRows(
         Origen,
-        {"ID_PARTICIPANTE"},
-        qryResumenParticipantes,
-        {"ID_TITULAR"},
-        "DatosParticipante",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirParticipantes = Table.ExpandTableColumn(
-        CombinarParticipantes,
-        "DatosParticipante",
-        {
-            "TOTAL_SALIDAS_EXTERNAS",
-            "MONTO_SALIDAS_EXTERNAS"
-        },
-        {
-            "TOTAL_SALIDAS_EXTERNAS",
-            "MONTO_SALIDAS_EXTERNAS"
-        }
-    ),
-
-    CombinarSecuencia = Table.NestedJoin(
-        ExpandirParticipantes,
-        {"ID_PARTICIPANTE"},
-        qryValidacionSecuencia,
-        {"ID_TITULAR"},
-        "DatosSecuencia",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirSecuencia = Table.ExpandTableColumn(
-        CombinarSecuencia,
-        "DatosSecuencia",
-        {
-            "RESULTADO_SECUENCIA",
-            "FECHA_PRIMERA_ENTRADA",
-            "FECHA_PRIMERA_SALIDA_EXTERNA"
-        },
-        {
-            "RESULTADO_SECUENCIA",
-            "FECHA_PRIMERA_ENTRADA",
-            "FECHA_PRIMERA_SALIDA_EXTERNA"
-        }
-    ),
-
-    CompletarNulos = Table.ReplaceValue(
-        ExpandirSecuencia,
-        null,
-        0,
-        Replacer.ReplaceValue,
-        {
-            "TOTAL_SALIDAS_EXTERNAS",
-            "MONTO_SALIDAS_EXTERNAS"
-        }
-    ),
-
-    ClasificarPerfil = Table.AddColumn(
-        CompletarNulos,
-        "PERFIL_RED_PRELIMINAR",
         each
-            if [MONTO_RECIBIDO] > 0
-                and [MONTO_SALIDAS_EXTERNAS] > 0
-                and [RESULTADO_SECUENCIA] = "ENTRADA_ANTERIOR_A_SALIDA"
-            then "RECEPTOR_Y_ACUMULADOR_COMPATIBLE"
-
-            else if [MONTO_RECIBIDO] > 0
-                and [MONTO_SALIDAS_EXTERNAS] > 0
-            then "RECEPTOR_Y_EMISOR_EXTERNO_SIN_SECUENCIA_CONFIRMADA"
-
-            else if [MONTO_RECIBIDO] > 0
-            then "RECEPTOR_INTERNO"
-
-            else if [MONTO_SALIDAS_EXTERNAS] > 0
-            then "EMISOR_EXTERNO"
-
-            else "SIN_PERFIL_IDENTIFICADO",
-        type text
+            [PERFIL_RED_PRELIMINAR] =
+                "RECEPTOR_Y_ACUMULADOR_COMPATIBLE"
     ),
 
-    OrdenarResultados = Table.Sort(
-        ClasificarPerfil,
+    CalcularPorcentajeSalida = Table.AddColumn(
+        FiltrarCandidatos,
+        "PORCENTAJE_SALIDA_SOBRE_RECIBIDO",
+        each
+            if [MONTO_RECIBIDO] = null or [MONTO_RECIBIDO] = 0
+            then null
+            else [MONTO_SALIDAS_EXTERNAS] / [MONTO_RECIBIDO],
+        Percentage.Type
+    ),
+
+    Ordenar = Table.Sort(
+        CalcularPorcentajeSalida,
         {
             {"MONTO_RECIBIDO", Order.Descending}
         }
     )
 in
-    OrdenarResultados
+    Ordenar
