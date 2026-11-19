@@ -1,11 +1,10 @@
-
 let
     Origen = qryDetalleEndosos,
 
     // =====================================================
     // 1. PARAMETROS
     // =====================================================
-    ToleranciaMinutos = 10,
+    ToleranciaMinutos = 0.05,
 
     // =====================================================
     // 2. SEPARAR DEBITOS Y CREDITOS
@@ -473,6 +472,8 @@ let
             {"ID_BENEFICIARIO", Order.Ascending},
             {"FECHA_DEBITO", Order.Ascending}
         }
-    )
+    ),
+    #"Filas filtradas" = Table.SelectRows(OrdenarResultados, each ([ESTADO_CONCILIACION] = "SOLO_DEBITO")),
+    #"Filas ordenadas" = Table.Sort(#"Filas filtradas",{{"MONTO_OPERACION", Order.Descending}})
 in
-    OrdenarResultados
+    #"Filas ordenadas"
