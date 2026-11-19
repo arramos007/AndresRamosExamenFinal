@@ -1,94 +1,91 @@
 let
-    Origen = qryRelacionesInternas,
+    Origen = qryResumenRedInterna,
 
-    ComoEmisor = Table.Group(
+    CombinarParticipantes = Table.NestedJoin(
         Origen,
-        {"ID_EMISOR"},
-        {
-            {"TOTAL_TRANSFERENCIAS_EMITIDAS", each List.Sum([TOTAL_OPERACIONES]), Int64.Type},
-            {"MONTO_EMITIDO", each List.Sum([MONTO_TOTAL]), type number},
-            {"TOTAL_BENEFICIARIOS", each List.Count(List.Distinct(List.RemoveNulls([ID_BENEFICIARIO]))), Int64.Type}
-        }
-    ),
-
-    RenombrarEmisor = Table.RenameColumns(
-        ComoEmisor,
-        {{"ID_EMISOR", "ID_PARTICIPANTE"}}
-    ),
-
-    ComoBeneficiario = Table.Group(
-        Origen,
-        {"ID_BENEFICIARIO"},
-        {
-            {"TOTAL_TRANSFERENCIAS_RECIBIDAS", each List.Sum([TOTAL_OPERACIONES]), Int64.Type},
-            {"MONTO_RECIBIDO", each List.Sum([MONTO_TOTAL]), type number},
-            {"TOTAL_EMISORES", each List.Count(List.Distinct(List.RemoveNulls([ID_EMISOR]))), Int64.Type}
-        }
-    ),
-
-    RenombrarBeneficiario = Table.RenameColumns(
-        ComoBeneficiario,
-        {{"ID_BENEFICIARIO", "ID_PARTICIPANTE_RECIBIO"}}
-    ),
-
-    Combinar = Table.NestedJoin(
-        RenombrarEmisor,
         {"ID_PARTICIPANTE"},
-        RenombrarBeneficiario,
-        {"ID_PARTICIPANTE_RECIBIO"},
-        "DatosRecepcion",
-        JoinKind.FullOuter
+        qryResumenParticipantes,
+        {"ID_TITULAR"},
+        "DatosParticipante",
+        JoinKind.LeftOuter
     ),
 
-    Expandir = Table.ExpandTableColumn(
-        Combinar,
-        "DatosRecepcion",
+    ExpandirParticipantes = Table.ExpandTableColumn(
+        CombinarParticipantes,
+        "DatosParticipante",
         {
-            "ID_PARTICIPANTE_RECIBIO",
-            "TOTAL_TRANSFERENCIAS_RECIBIDAS",
-            "MONTO_RECIBIDO",
-            "TOTAL_EMISORES"
+            "TOTAL_SALIDAS_EXTERNAS",
+            "MONTO_SALIDAS_EXTERNAS"
+        },
+        {
+            "TOTAL_SALIDAS_EXTERNAS",
+            "MONTO_SALIDAS_EXTERNAS"
         }
     ),
 
-    UnificarId = Table.AddColumn(
-        Expandir,
-        "ID_FINAL",
-        each
-            if [ID_PARTICIPANTE] = null
-            then [ID_PARTICIPANTE_RECIBIO]
-            else [ID_PARTICIPANTE],
-        type text
+    CombinarSecuencia = Table.NestedJoin(
+        ExpandirParticipantes,
+        {"ID_PARTICIPANTE"},
+        qryValidacionSecuencia,
+        {"ID_TITULAR"},
+        "DatosSecuencia",
+        JoinKind.LeftOuter
     ),
 
-    Limpiar = Table.RemoveColumns(
-        UnificarId,
-        {"ID_PARTICIPANTE", "ID_PARTICIPANTE_RECIBIO"}
+    ExpandirSecuencia = Table.ExpandTableColumn(
+        CombinarSecuencia,
+        "DatosSecuencia",
+        {
+            "RESULTADO_SECUENCIA",
+            "FECHA_PRIMERA_ENTRADA",
+            "FECHA_PRIMERA_SALIDA_EXTERNA"
+        },
+        {
+            "RESULTADO_SECUENCIA",
+            "FECHA_PRIMERA_ENTRADA",
+            "FECHA_PRIMERA_SALIDA_EXTERNA"
+        }
     ),
 
-    RenombrarId = Table.RenameColumns(
-        Limpiar,
-        {{"ID_FINAL", "ID_PARTICIPANTE"}}
-    ),
-
-    ReemplazarNulos = Table.ReplaceValue(
-        RenombrarId,
+    CompletarNulos = Table.ReplaceValue(
+        ExpandirSecuencia,
         null,
         0,
         Replacer.ReplaceValue,
         {
-            "TOTAL_TRANSFERENCIAS_EMITIDAS",
-            "MONTO_EMITIDO",
-            "TOTAL_BENEFICIARIOS",
-            "TOTAL_TRANSFERENCIAS_RECIBIDAS",
-            "MONTO_RECIBIDO",
-            "TOTAL_EMISORES"
+            "TOTAL_SALIDAS_EXTERNAS",
+            "MONTO_SALIDAS_EXTERNAS"
         }
     ),
 
-    Ordenar = Table.Sort(
-        ReemplazarNulos,
-        {{"MONTO_RECIBIDO", Order.Descending}}
+    ClasificarPerfil = Table.AddColumn(
+        CompletarNulos,
+        "PERFIL_RED_PRELIMINAR",
+        each
+            if [MONTO_RECIBIDO] > 0
+                and [MONTO_SALIDAS_EXTERNAS] > 0
+                and [RESULTADO_SECUENCIA] = "ENTRADA_ANTERIOR_A_SALIDA"
+            then "RECEPTOR_Y_ACUMULADOR_COMPATIBLE"
+
+            else if [MONTO_RECIBIDO] > 0
+                and [MONTO_SALIDAS_EXTERNAS] > 0
+            then "RECEPTOR_Y_EMISOR_EXTERNO_SIN_SECUENCIA_CONFIRMADA"
+
+            else if [MONTO_RECIBIDO] > 0
+            then "RECEPTOR_INTERNO"
+
+            else if [MONTO_SALIDAS_EXTERNAS] > 0
+            then "EMISOR_EXTERNO"
+
+            else "SIN_PERFIL_IDENTIFICADO",
+        type text
+    ),
+
+    OrdenarResultados = Table.Sort(
+        ClasificarPerfil,
+        {
+            {"MONTO_RECIBIDO", Order.Descending}
+        }
     )
 in
-    Ordenar
+    OrdenarResultados
