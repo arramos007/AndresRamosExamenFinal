@@ -1,35 +1,91 @@
+
 let
     Origen = qryDetalleEndosos,
 
-    AgruparEndosos = Table.Group(
+    FiltrarLadosValidos = Table.SelectRows(
         Origen,
-        {"CLAVE_MOVIMIENTO"},
+        each
+            [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO"
+            or [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO"
+    ),
+
+    CrearClaveConciliacion = Table.AddColumn(
+        FiltrarLadosValidos,
+        "CLAVE_CONCILIACION",
+        each Text.Combine(
+            {
+                if [ID_EMISOR] = null then "" else [ID_EMISOR],
+                if [ID_BENEFICIARIO] = null then "" else [ID_BENEFICIARIO],
+                if [#"FECHA DE MOV."] = null then ""
+                    else DateTime.ToText([#"FECHA DE MOV."], "yyyyMMddHHmmss"),
+                if [#"MONTO MOV."] = null then ""
+                    else Number.ToText([#"MONTO MOV."], "0.################", "en-US")
+            },
+            "|"
+        ),
+        type text
+    ),
+
+    AgruparEndosos = Table.Group(
+        CrearClaveConciliacion,
+        {"CLAVE_CONCILIACION"},
         {
             {
-                "TOTAL_REGISTROS_CARTOLA",
+                "ID_EMISOR",
+                each List.First(List.RemoveNulls([ID_EMISOR]), null),
+                type nullable text
+            },
+            {
+                "ID_BENEFICIARIO",
+                each List.First(List.RemoveNulls([ID_BENEFICIARIO]), null),
+                type nullable text
+            },
+            {
+                "FECHA_OPERACION",
+                each List.Min(List.RemoveNulls([#"FECHA DE MOV."]), null),
+                type nullable datetime
+            },
+            {
+                "MONTO_OPERACION",
+                each List.First(List.RemoveNulls([#"MONTO MOV."]), null),
+                type nullable number
+            },
+            {
+                "TOTAL_REGISTROS_ORIGEN",
                 each Table.RowCount(_),
                 Int64.Type
             },
             {
-                "TOTAL_RELACIONES",
+                "TOTAL_DEBITOS",
                 each List.Count(
                     List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "REL")
-                        )
+                        Table.SelectRows(
+                            _,
+                            each [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO"
+                        )[ID_TITULAR]
                     )
                 ),
                 Int64.Type
             },
             {
-                "RELACIONES",
+                "TOTAL_CREDITOS",
+                each List.Count(
+                    List.Distinct(
+                        Table.SelectRows(
+                            _,
+                            each [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO"
+                        )[ID_TITULAR]
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "CODIGOS_MOVIMIENTO",
                 each Text.Combine(
                     List.Transform(
                         List.Sort(
                             List.Distinct(
-                                List.RemoveNulls(
-                                    Table.Column(_, "REL")
-                                )
+                                List.RemoveNulls([#"CODIGO MOV."])
                             )
                         ),
                         Text.From
@@ -39,11 +95,14 @@ let
                 type text
             },
             {
-                "RELAC",
+                "RELACIONES",
                 each Text.Combine(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RELAC.")
+                    List.Sort(
+                        List.Distinct(
+                            List.Transform(
+                                List.RemoveNulls([REL]),
+                                Text.From
+                            )
                         )
                     ),
                     " | "
@@ -54,9 +113,7 @@ let
                 "TOTAL_EMPRESAS",
                 each List.Count(
                     List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                        )
+                        List.RemoveNulls([#"RUC SOCIAL EMPLEADOR"])
                     )
                 ),
                 Int64.Type
@@ -64,86 +121,42 @@ let
             {
                 "EMPRESAS",
                 each Text.Combine(
-                    List.Transform(
-                        List.Sort(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                                )
+                    List.Sort(
+                        List.Distinct(
+                            List.Transform(
+                                List.RemoveNulls([#"RUC SOCIAL EMPLEADOR"]),
+                                Text.From
                             )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "TOTAL_TITULARES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_TITULAR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TIPOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            Table.Column(_, "TIPO_OPERACION")
                         )
                     ),
                     " | "
                 ),
                 type text
-            },
-            {
-                "FLUJOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            Table.Column(_, "TIPO_FLUJO")
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "MONTO_OPERACION",
-                each List.First(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO MOV.")
-                    ),
-                    null
-                ),
-                type number
-            },
-            {
-                "FECHA_OPERACION",
-                each List.Min(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
             }
         }
     ),
 
-    FiltrarCoincidencias = Table.SelectRows(
+    ClasificarConciliacion = Table.AddColumn(
         AgruparEndosos,
-        each [TOTAL_REGISTROS_CARTOLA] > 1
+        "ESTADO_CONCILIACION",
+        each
+            if [TOTAL_DEBITOS] > 0 and [TOTAL_CREDITOS] > 0 then
+                "CONCILIADO"
+            else if [TOTAL_DEBITOS] > 0 then
+                "SOLO_DEBITO"
+            else if [TOTAL_CREDITOS] > 0 then
+                "SOLO_CREDITO"
+            else
+                "REVISAR",
+        type text
     ),
 
     OrdenarResultados = Table.Sort(
-        FiltrarCoincidencias,
+        ClasificarConciliacion,
         {
-            {"TOTAL_REGISTROS_CARTOLA", Order.Descending}
+            {"MONTO_OPERACION", Order.Descending},
+            {"FECHA_OPERACION", Order.Ascending}
         }
-    ),
-    #"Filas filtradas" = Table.SelectRows(OrdenarResultados, each true)
+    )
 in
-    #"Filas filtradas"
+    OrdenarResultados
