@@ -5,6 +5,8 @@ let
         Origen,
         each
             [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+            and [ID_TITULAR] <> null
+            and [ID_TITULAR] <> ""
             and [ID_BENEFICIARIO] <> null
             and [ID_BENEFICIARIO] <> ""
     ),
@@ -22,66 +24,28 @@ let
         }
     ),
 
-    AgruparBeneficiarios = Table.Group(
+    CombinarPerfiles = Table.NestedJoin(
         SeleccionarColumnas,
-        {"ID_BENEFICIARIO"},
-        {
-            {
-                "TOTAL_RECEPCIONES",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_EMISORES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_EMISOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TOTAL_PARTICIPANTES_ORIGEN",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_TITULAR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL_RECIBIDO",
-                each List.Sum(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO MOV.")
-                    )
-                ),
-                type number
-            },
-            {
-                "FECHA_PRIMERA_RECEPCION",
-                each List.Min(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMA_RECEPCION",
-                each List.Max(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
-            }
-        }
+        {"ID_TITULAR"},
+        qryClasificacionParticipantes,
+        {"ID_TITULAR"},
+        "DatosPerfil",
+        JoinKind.LeftOuter
     ),
 
-    OrdenarPorMonto = Table.Sort(
-        AgruparBeneficiarios,
-        {{"MONTO_TOTAL_RECIBIDO", Order.Descending}}
+    ExpandirPerfil = Table.ExpandTableColumn(
+        CombinarPerfiles,
+        "DatosPerfil",
+        {"PERFIL_PRELIMINAR"},
+        {"PERFIL_ORIGEN"}
+    ),
+
+    ClasificarPerfil = Table.ReplaceValue(
+        ExpandirPerfil,
+        null,
+        "SIN_PERFIL_CLASIFICADO",
+        Replacer.ReplaceValue,
+        {"PERFIL_ORIGEN"}
     )
 in
-    OrdenarPorMonto
+    ClasificarPerfil
