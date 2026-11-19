@@ -9,6 +9,10 @@ let
     SeleccionarColumnas = Table.SelectColumns(
         FiltrarUtilizaciones,
         {
+            "RUC SOCIAL EMPLEADOR",
+            "RAZON SOCIAL EMPLEADOR",
+            "IDENTIFICACION EMPLEADO (EF)",
+            "NOMBRE EMPLEADO (EF)",
             "ID_TITULAR",
             "ID_EMISOR",
             "ID_BENEFICIARIO",
