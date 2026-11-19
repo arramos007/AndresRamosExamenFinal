@@ -1,43 +1,41 @@
 let
-    Original = qryDetalleUtilizaciones,
+    Origen = qryModeloMovimientos,
 
-    Conciliado = qryUtilizacionesConciliadas,
-
-    TotalOriginal = List.Sum(
-        List.RemoveNulls(
-            Table.Column(Original, "MONTO MOV.")
-        )
+    FiltrarEndosos = Table.SelectRows(
+        Origen,
+        each
+            [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            or [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
     ),
 
-    TotalConciliado = List.Sum(
-        List.RemoveNulls(
-            Table.Column(Conciliado, "MONTO_OPERACION_CONCILIADO")
-        )
-    ),
-
-    RegistrosOriginales = Table.RowCount(Original),
-
-    OperacionesConciliadas = Table.RowCount(Conciliado),
-
-    Resultado = #table(
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarEndosos,
         {
-            "TOTAL_REGISTROS_ORIGINALES",
-            "TOTAL_OPERACIONES_CONCILIADAS",
-            "MONTO_TOTAL_ORIGINAL",
-            "MONTO_TOTAL_CONCILIADO",
-            "DIFERENCIA_MONETARIA",
-            "REGISTROS_RECONCILIADOS"
-        },
-        {
-            {
-                RegistrosOriginales,
-                OperacionesConciliadas,
-                TotalOriginal,
-                TotalConciliado,
-                TotalOriginal - TotalConciliado,
-                RegistrosOriginales - OperacionesConciliadas
-            }
+            "RUC SOCIAL EMPLEADOR",
+            "RAZON SOCIAL EMPLEADOR",
+            "IDENTIFICACION EMPLEADO (EF)",
+            "NOMBRE EMPLEADO (EF)",
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "CLAVE_MOVIMIENTO",
+            "ESTADO_TRAZABILIDAD"
         }
+    ),
+
+    OrdenarPorFecha = Table.Sort(
+        SeleccionarColumnas,
+        {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
-    Resultado
+    OrdenarPorFecha
