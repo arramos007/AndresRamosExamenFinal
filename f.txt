@@ -2,12 +2,17 @@
 let
     Origen = qryDetalleEndosos,
 
-    AgruparEndosos = Table.Group(
+    AgruparOperaciones = Table.Group(
         Origen,
         {"CLAVE_MOVIMIENTO"},
         {
             {
-                "TOTAL_REGISTROS_CARTOLA",
+                "DETALLE",
+                each _,
+                type table
+            },
+            {
+                "TOTAL_REGISTROS_ORIGINALES",
                 each Table.RowCount(_),
                 Int64.Type
             },
@@ -34,18 +39,6 @@ let
                             )
                         ),
                         Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "RELAC",
-                each Text.Combine(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RELAC.")
-                        )
                     ),
                     " | "
                 ),
@@ -80,6 +73,23 @@ let
                 type text
             },
             {
+                "RAZONES_SOCIALES",
+                each Text.Combine(
+                    List.Transform(
+                        List.Sort(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    Table.Column(_, "RAZON SOCIAL EMPLEADOR")
+                                )
+                            )
+                        ),
+                        Text.From
+                    ),
+                    " | "
+                ),
+                type text
+            },
+            {
                 "TOTAL_TITULARES",
                 each List.Count(
                     List.Distinct(
@@ -89,60 +99,80 @@ let
                     )
                 ),
                 Int64.Type
-            },
-            {
-                "TIPOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            Table.Column(_, "TIPO_OPERACION")
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "FLUJOS_REGISTRADOS",
-                each Text.Combine(
-                    List.Sort(
-                        List.Distinct(
-                            Table.Column(_, "TIPO_FLUJO")
-                        )
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "MONTO_OPERACION",
-                each List.First(
-                    List.RemoveNulls(
-                        Table.Column(_, "MONTO MOV.")
-                    ),
-                    null
-                ),
-                type number
-            },
-            {
-                "FECHA_OPERACION",
-                each List.Min(
-                    Table.Column(_, "FECHA DE MOV.")
-                ),
-                type datetime
             }
         }
     ),
 
-    FiltrarCoincidencias = Table.SelectRows(
-        AgruparEndosos,
-        each [TOTAL_REGISTROS_CARTOLA] > 1
+    AgregarDatosEconomicos = Table.AddColumn(
+        AgruparOperaciones,
+        "DATOS_OPERACION",
+        each [DETALLE]{0}
+    ),
+
+    ExpandirDatosEconomicos = Table.ExpandRecordColumn(
+        AgregarDatosEconomicos,
+        "DATOS_OPERACION",
+        {
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "NOMBRE MOV.",
+            "TIPO MOV.",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO MOV.",
+            "SALDO NCD",
+            "EN TRAMA EMISOR",
+            "EN TRAMA BENEF.",
+            "ESTADO_TRAZABILIDAD"
+        },
+        {
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA_OPERACION",
+            "CODIGO_MOVIMIENTO",
+            "NOMBRE_MOVIMIENTO",
+            "TIPO_MOVIMIENTO",
+            "TIPO_FLUJO",
+            "TIPO_OPERACION",
+            "MONTO_OPERACION",
+            "SALDO_NCD",
+            "EN_TRAMA_EMISOR",
+            "EN_TRAMA_BENEFICIARIO",
+            "ESTADO_TRAZABILIDAD"
+        }
+    ),
+
+    ClasificarRepresentacion = Table.AddColumn(
+        ExpandirDatosEconomicos,
+        "TIPO_REPRESENTACION",
+        each
+            if [TOTAL_REGISTROS_ORIGINALES] = 1 then
+                "REGISTRO_UNICO"
+            else if [TOTAL_EMPRESAS] > 1 and [TOTAL_RELACIONES] > 1 then
+                "MULTIPLES_EMPRESAS_Y_RELACIONES"
+            else if [TOTAL_EMPRESAS] > 1 then
+                "MULTIPLES_EMPRESAS"
+            else if [TOTAL_RELACIONES] > 1 then
+                "MULTIPLES_RELACIONES"
+            else
+                "REPETICION_POR_VERIFICAR",
+        type text
+    ),
+
+    QuitarDetalle = Table.RemoveColumns(
+        ClasificarRepresentacion,
+        {"DETALLE"}
     ),
 
     OrdenarResultados = Table.Sort(
-        FiltrarCoincidencias,
+        QuitarDetalle,
         {
-            {"TOTAL_REGISTROS_CARTOLA", Order.Descending}
+            {"FECHA_OPERACION", Order.Ascending},
+            {"ID_EMISOR", Order.Ascending}
         }
     )
 in
