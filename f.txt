@@ -1,3 +1,4 @@
+
 let
     Origen = qryModeloMovimientos,
 
@@ -35,8 +36,43 @@ let
         }
     ),
 
-    OrdenarPorFecha = Table.Sort(
+    ValidarTitularCartola = Table.AddColumn(
         SeleccionarColumnas,
+        "VALIDACION_LADO_CARTOLA",
+        each
+            let
+                Tipo = Text.Upper(Text.Trim(
+                    if [#"TIPO MOV."] = null then ""
+                    else [#"TIPO MOV."]
+                )),
+                Titular = [ID_TITULAR],
+                Emisor = [ID_EMISOR],
+                Beneficiario = [ID_BENEFICIARIO]
+            in
+                if Tipo = "DEB" then
+                    if Titular = Emisor then "DEBITO_VALIDO"
+                    else "DEBITO_NO_COINCIDE_CON_EMISOR"
+                else if Tipo = "CRE" then
+                    if Titular = Beneficiario then "CREDITO_VALIDO"
+                    else "CREDITO_NO_COINCIDE_CON_BENEFICIARIO"
+                else "TIPO_MOVIMIENTO_NO_RECONOCIDO",
+        type text
+    ),
+
+    IdentificarContraparte = Table.AddColumn(
+        ValidarTitularCartola,
+        "ID_CONTRAPARTE_ENDOSO",
+        each
+            if [VALIDACION_LADO_CARTOLA] = "DEBITO_VALIDO" then
+                [ID_BENEFICIARIO]
+            else if [VALIDACION_LADO_CARTOLA] = "CREDITO_VALIDO" then
+                [ID_EMISOR]
+            else null,
+        type text
+    ),
+
+    OrdenarPorFecha = Table.Sort(
+        IdentificarContraparte,
         {{"FECHA DE MOV.", Order.Ascending}}
     )
 in
