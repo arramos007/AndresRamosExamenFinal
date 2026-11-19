@@ -1,115 +1,87 @@
-
 let
-    Origen = qryResumenParticipantes,
+    Origen = qryPerfilParticipantes,
 
-    // =====================================================
-    // 1. INCORPORAR VALIDACION DE SECUENCIA
-    // =====================================================
-    ConsultasCombinadas = Table.NestedJoin(
+    FiltrarSalidasExternas = Table.SelectRows(
         Origen,
-        {"ID_TITULAR"},
-        qryValidacionSecuencia,
-        {"ID_TITULAR"},
-        "VALIDACION_SECUENCIA",
-        JoinKind.LeftOuter
+        each
+            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+            and [ID_BENEFICIARIO] <> null
+            and [ID_BENEFICIARIO] <> ""
     ),
 
-    ExpandirValidacion = Table.ExpandTableColumn(
-        ConsultasCombinadas,
-        "VALIDACION_SECUENCIA",
+    SeleccionarColumnas = Table.SelectColumns(
+        FiltrarSalidasExternas,
         {
-            "FECHA_PRIMERA_ENTRADA",
-            "FECHA_PRIMERA_SALIDA_EXTERNA",
-            "RESULTADO_SECUENCIA"
-        },
-        {
-            "FECHA_PRIMERA_ENTRADA",
-            "FECHA_PRIMERA_SALIDA_EXTERNA",
-            "RESULTADO_SECUENCIA"
+            "ID_TITULAR",
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "MONTO MOV.",
+            "CLAVE_MOVIMIENTO"
         }
     ),
 
-    // =====================================================
-    // 2. CONSERVAR CLASIFICACION PRELIMINAR ORIGINAL
-    // =====================================================
-    AgregarPerfilPreliminar = Table.AddColumn(
-        ExpandirValidacion,
-        "PERFIL_PRELIMINAR",
-        each
-            let
-                Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
-                Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
-                Secuencia = [RESULTADO_SECUENCIA]
-            in
-                if Entradas > 0 and Salidas > 0
-                    and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA"
-                then "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
-
-                else if Entradas > 0 and Salidas > 0
-                then "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
-
-                else if Entradas > 0
-                then "CONCENTRADOR"
-
-                else if Salidas > 0
-                then "EMISOR_SALIDA_EXTERNA"
-
-                else "SIN_PERFIL_DE_RED_IDENTIFICADO",
-        type text
-    ),
-
-    // =====================================================
-    // 3. CLASIFICACION ANALITICA AMPLIADA
-    // =====================================================
-    AgregarPerfilAnalitico = Table.AddColumn(
-        AgregarPerfilPreliminar,
-        "PERFIL_ANALITICO",
-        each
-            let
-                Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
-                SalidasInternas = try Number.From([TOTAL_SALIDAS_INTERNAS]) otherwise 0,
-                SalidasExternas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
-                Secuencia = [RESULTADO_SECUENCIA]
-            in
-                if Entradas > 0
-                    and SalidasInternas > 0
-                    and SalidasExternas > 0
-                then "POSIBLE_INTERMEDIARIO"
-
-                else if Entradas > 0
-                    and SalidasInternas > 0
-                then "POSIBLE_INTERMEDIARIO"
-
-                else if Entradas > 0
-                    and SalidasExternas > 0
-                    and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA"
-                then "POSIBLE_ACUMULADOR"
-
-                else if Entradas > 0
-                    and SalidasExternas > 0
-                then "RECEPTOR_CON_SALIDA_EXTERNA_SECUENCIA_NO_CONFIRMADA"
-
-                else if Entradas > 0
-                    and SalidasInternas = 0
-                    and SalidasExternas = 0
-                then "POSIBLE_BENEFICIARIO_FINAL_EN_CARTOLA"
-
-                else if SalidasInternas > 0
-                    or SalidasExternas > 0
-                then "EMISOR_O_DISTRIBUIDOR"
-
-                else "INDETERMINADO",
-        type text
-    ),
-
-    // =====================================================
-    // 4. ORDENAR POR MONTO RECIBIDO
-    // =====================================================
-    OrdenarParticipantes = Table.Sort(
-        AgregarPerfilAnalitico,
+    AgruparBeneficiarios = Table.Group(
+        SeleccionarColumnas,
+        {"ID_BENEFICIARIO"},
         {
-            {"MONTO_ENTRADAS_INTERNAS", Order.Descending}
+            {
+                "TOTAL_RECEPCIONES",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_EMISORES",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_EMISOR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "TOTAL_PARTICIPANTES_ORIGEN",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_TITULAR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_TOTAL_RECIBIDO",
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO MOV.")
+                    )
+                ),
+                type number
+            },
+            {
+                "FECHA_PRIMERA_RECEPCION",
+                each List.Min(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
+                type datetime
+            },
+            {
+                "FECHA_ULTIMA_RECEPCION",
+                each List.Max(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
+                type datetime
+            }
         }
+    ),
+
+    OrdenarPorMonto = Table.Sort(
+        AgruparBeneficiarios,
+        {{"MONTO_TOTAL_RECIBIDO", Order.Descending}}
     )
 in
-    OrdenarParticipantes
+    OrdenarPorMonto
