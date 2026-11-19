@@ -1,21 +1,115 @@
+
 let
     Origen = qryResumenParticipantes,
-    #"Consultas combinadas" = Table.NestedJoin(Origen, {"ID_TITULAR"}, qryValidacionSecuencia, {"ID_TITULAR"}, "qryValidacionSecuencia", JoinKind.LeftOuter),
-    #"Se expandió qryValidacionSecuencia" = Table.ExpandTableColumn(#"Consultas combinadas", "qryValidacionSecuencia", {"FECHA_PRIMERA_ENTRADA", "FECHA_PRIMERA_SALIDA_EXTERNA", "RESULTADO_SECUENCIA"}, {"qryValidacionSecuencia.FECHA_PRIMERA_ENTRADA", "qryValidacionSecuencia.FECHA_PRIMERA_SALIDA_EXTERNA", "qryValidacionSecuencia.RESULTADO_SECUENCIA"}),
-    #"Personalizada agregada" = Table.AddColumn(#"Se expandió qryValidacionSecuencia", "PERFIL_PRELIMINAR", each let
-    Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
-    Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
-    Secuencia = [#"qryValidacionSecuencia.RESULTADO_SECUENCIA"]
+
+    // =====================================================
+    // 1. INCORPORAR VALIDACION DE SECUENCIA
+    // =====================================================
+    ConsultasCombinadas = Table.NestedJoin(
+        Origen,
+        {"ID_TITULAR"},
+        qryValidacionSecuencia,
+        {"ID_TITULAR"},
+        "VALIDACION_SECUENCIA",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirValidacion = Table.ExpandTableColumn(
+        ConsultasCombinadas,
+        "VALIDACION_SECUENCIA",
+        {
+            "FECHA_PRIMERA_ENTRADA",
+            "FECHA_PRIMERA_SALIDA_EXTERNA",
+            "RESULTADO_SECUENCIA"
+        },
+        {
+            "FECHA_PRIMERA_ENTRADA",
+            "FECHA_PRIMERA_SALIDA_EXTERNA",
+            "RESULTADO_SECUENCIA"
+        }
+    ),
+
+    // =====================================================
+    // 2. CONSERVAR CLASIFICACION PRELIMINAR ORIGINAL
+    // =====================================================
+    AgregarPerfilPreliminar = Table.AddColumn(
+        ExpandirValidacion,
+        "PERFIL_PRELIMINAR",
+        each
+            let
+                Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
+                Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
+                Secuencia = [RESULTADO_SECUENCIA]
+            in
+                if Entradas > 0 and Salidas > 0
+                    and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA"
+                then "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
+
+                else if Entradas > 0 and Salidas > 0
+                then "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
+
+                else if Entradas > 0
+                then "CONCENTRADOR"
+
+                else if Salidas > 0
+                then "EMISOR_SALIDA_EXTERNA"
+
+                else "SIN_PERFIL_DE_RED_IDENTIFICADO",
+        type text
+    ),
+
+    // =====================================================
+    // 3. CLASIFICACION ANALITICA AMPLIADA
+    // =====================================================
+    AgregarPerfilAnalitico = Table.AddColumn(
+        AgregarPerfilPreliminar,
+        "PERFIL_ANALITICO",
+        each
+            let
+                Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
+                SalidasInternas = try Number.From([TOTAL_SALIDAS_INTERNAS]) otherwise 0,
+                SalidasExternas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
+                Secuencia = [RESULTADO_SECUENCIA]
+            in
+                if Entradas > 0
+                    and SalidasInternas > 0
+                    and SalidasExternas > 0
+                then "POSIBLE_INTERMEDIARIO"
+
+                else if Entradas > 0
+                    and SalidasInternas > 0
+                then "POSIBLE_INTERMEDIARIO"
+
+                else if Entradas > 0
+                    and SalidasExternas > 0
+                    and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA"
+                then "POSIBLE_ACUMULADOR"
+
+                else if Entradas > 0
+                    and SalidasExternas > 0
+                then "RECEPTOR_CON_SALIDA_EXTERNA_SECUENCIA_NO_CONFIRMADA"
+
+                else if Entradas > 0
+                    and SalidasInternas = 0
+                    and SalidasExternas = 0
+                then "POSIBLE_BENEFICIARIO_FINAL_EN_CARTOLA"
+
+                else if SalidasInternas > 0
+                    or SalidasExternas > 0
+                then "EMISOR_O_DISTRIBUIDOR"
+
+                else "INDETERMINADO",
+        type text
+    ),
+
+    // =====================================================
+    // 4. ORDENAR POR MONTO RECIBIDO
+    // =====================================================
+    OrdenarParticipantes = Table.Sort(
+        AgregarPerfilAnalitico,
+        {
+            {"MONTO_ENTRADAS_INTERNAS", Order.Descending}
+        }
+    )
 in
-    if Entradas > 0 and Salidas > 0 and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA" then
-        "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
-    else if Entradas > 0 and Salidas > 0 then
-        "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
-    else if Entradas > 0 then
-        "CONCENTRADOR"
-    else if Salidas > 0 then
-        "EMISOR_SALIDA_EXTERNA"
-    else
-        "SIN_PERFIL_DE_RED_IDENTIFICADO")
-in
-    #"Personalizada agregada"
+    OrdenarParticipantes
