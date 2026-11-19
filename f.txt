@@ -1,149 +1,21 @@
-
 let
-    Origen = qryPerfilParticipantes,
-
-    // =====================================================
-    // 1. CONSERVAR CAMPOS NECESARIOS
-    // =====================================================
-    SeleccionarColumnas = Table.SelectColumns(
-        Origen,
-        {
-            "ID_TITULAR",
-            "CLAVE_MOVIMIENTO",
-            "TIPO_MOVIMIENTO_RED",
-            "MONTO MOV.",
-            "FECHA DE MOV."
-        }
-    ),
-
-    // =====================================================
-    // 2. ELIMINAR DUPLICADOS POR TITULAR Y MOVIMIENTO
-    // =====================================================
-    MovimientosUnicos = Table.Distinct(
-        SeleccionarColumnas,
-        {
-            "ID_TITULAR",
-            "CLAVE_MOVIMIENTO"
-        }
-    ),
-
-    // =====================================================
-    // 3. AGRUPAR POR PARTICIPANTE
-    // =====================================================
-    AgruparParticipantes = Table.Group(
-        MovimientosUnicos,
-        {"ID_TITULAR"},
-        {
-            {
-                "TOTAL_MOVIMIENTOS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_ENTRADAS_INTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] =
-                            "ENTRADA_DESDE_PARTICIPANTE"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_ENTRADAS_INTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] =
-                                    "ENTRADA_DESDE_PARTICIPANTE"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "TOTAL_SALIDAS_INTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] =
-                            "SALIDA_A_PARTICIPANTE"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_SALIDAS_INTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] =
-                                    "SALIDA_A_PARTICIPANTE"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "TOTAL_SALIDAS_EXTERNAS",
-                each Table.RowCount(
-                    Table.SelectRows(
-                        _,
-                        (r) => r[TIPO_MOVIMIENTO_RED] =
-                            "SALIDA_A_EXTERNO"
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_SALIDAS_EXTERNAS",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(
-                            Table.SelectRows(
-                                _,
-                                (r) => r[TIPO_MOVIMIENTO_RED] =
-                                    "SALIDA_A_EXTERNO"
-                            ),
-                            "MONTO MOV."
-                        ),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "FECHA_PRIMER_MOVIMIENTO",
-                each List.Min([#"FECHA DE MOV."]),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMO_MOVIMIENTO",
-                each List.Max([#"FECHA DE MOV."]),
-                type datetime
-            }
-        }
-    ),
-
-    // =====================================================
-    // 4. ORDENAR PARTICIPANTES
-    // =====================================================
-    OrdenarParticipantes = Table.Sort(
-        AgruparParticipantes,
-        {
-            {"MONTO_ENTRADAS_INTERNAS", Order.Descending}
-        }
-    )
+    Origen = qryResumenParticipantes,
+    #"Consultas combinadas" = Table.NestedJoin(Origen, {"ID_TITULAR"}, qryValidacionSecuencia, {"ID_TITULAR"}, "qryValidacionSecuencia", JoinKind.LeftOuter),
+    #"Se expandió qryValidacionSecuencia" = Table.ExpandTableColumn(#"Consultas combinadas", "qryValidacionSecuencia", {"FECHA_PRIMERA_ENTRADA", "FECHA_PRIMERA_SALIDA_EXTERNA", "RESULTADO_SECUENCIA"}, {"qryValidacionSecuencia.FECHA_PRIMERA_ENTRADA", "qryValidacionSecuencia.FECHA_PRIMERA_SALIDA_EXTERNA", "qryValidacionSecuencia.RESULTADO_SECUENCIA"}),
+    #"Personalizada agregada" = Table.AddColumn(#"Se expandió qryValidacionSecuencia", "PERFIL_PRELIMINAR", each let
+    Entradas = try Number.From([TOTAL_ENTRADAS_INTERNAS]) otherwise 0,
+    Salidas = try Number.From([TOTAL_SALIDAS_EXTERNAS]) otherwise 0,
+    Secuencia = [#"qryValidacionSecuencia.RESULTADO_SECUENCIA"]
 in
-    OrdenarParticipantes
+    if Entradas > 0 and Salidas > 0 and Secuencia = "ENTRADA_ANTERIOR_A_SALIDA" then
+        "CONCENTRADOR + ACUMULADOR_COMPATIBLE"
+    else if Entradas > 0 and Salidas > 0 then
+        "CONCENTRADOR + SALIDA_EXTERNA (SECUENCIA NO CONFIRMADA)"
+    else if Entradas > 0 then
+        "CONCENTRADOR"
+    else if Salidas > 0 then
+        "EMISOR_SALIDA_EXTERNA"
+    else
+        "SIN_PERFIL_DE_RED_IDENTIFICADO")
+in
+    #"Personalizada agregada"
