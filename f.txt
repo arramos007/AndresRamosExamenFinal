@@ -3,7 +3,7 @@ let
     Origen = qryDetalleEndosos,
 
     // =====================================================
-    // 1. PARAMETRO DE CONCILIACION
+    // 1. PARAMETRO TEMPORAL
     // =====================================================
     ToleranciaMinutos = 10,
 
@@ -31,7 +31,6 @@ let
 
     // =====================================================
     // 3. ELIMINAR DUPLICADOS ADMINISTRATIVOS
-    //    REL y empresa no forman parte de la operacion
     // =====================================================
     DebitosUnicos = Table.Distinct(
         DebitosOrigen,
@@ -55,7 +54,7 @@ let
     ),
 
     // =====================================================
-    // 4. IDENTIFICADORES INTERNOS
+    // 4. IDENTIFICAR CADA REGISTRO
     // =====================================================
     DebitosIndexados = Table.AddIndexColumn(
         DebitosUnicos,
@@ -74,155 +73,228 @@ let
     ),
 
     // =====================================================
-    // 5. BUSCAR CREDITOS CANDIDATOS PARA CADA DEBITO
+    // 5. CRUCE OPTIMIZADO POR BENEFICIARIO E IMPORTE
     // =====================================================
-    BuscarCandidatos = Table.AddColumn(
+    CruceInicial = Table.NestedJoin(
         DebitosIndexados,
-        "CANDIDATOS",
-        each
-            let
-                Debito = _,
-
-                Candidatos = Table.SelectRows(
-                    CreditosIndexados,
-                    (Credito) =>
-                        Credito[ID_BENEFICIARIO_CARTOLA]
-                            = Debito[ID_CONTRAPARTE_ENDOSO]
-
-                        and Credito[#"MONTO MOV."]
-                            = Debito[#"MONTO MOV."]
-
-                        and Number.Abs(
-                            Duration.TotalMinutes(
-                                Credito[#"FECHA DE MOV."]
-                                - Debito[#"FECHA DE MOV."]
-                            )
-                        ) <= ToleranciaMinutos
-                )
-            in
-                Candidatos
-    ),
-
-    ContarCandidatosDebito = Table.AddColumn(
-        BuscarCandidatos,
-        "TOTAL_CANDIDATOS_DEBITO",
-        each Table.RowCount([CANDIDATOS]),
-        Int64.Type
-    ),
-
-    // =====================================================
-    // 6. CONTAR CUANTOS DEBITOS RECLAMAN CADA CREDITO
-    // =====================================================
-    ContarDebitosCredito = Table.AddColumn(
+        {
+            "ID_CONTRAPARTE_ENDOSO",
+            "MONTO MOV."
+        },
         CreditosIndexados,
-        "TOTAL_CANDIDATOS_CREDITO",
-        each
-            let
-                CreditoActual = _,
+        {
+            "ID_BENEFICIARIO_CARTOLA",
+            "MONTO MOV."
+        },
+        "CANDIDATOS",
+        JoinKind.Inner
+    ),
 
-                DebitosCandidatos = Table.SelectRows(
-                    ContarCandidatosDebito,
-                    (Debito) =>
-                        List.Contains(
-                            Table.Column(
-                                Debito[CANDIDATOS],
-                                "ID_CREDITO"
-                            ),
-                            CreditoActual[ID_CREDITO]
-                        )
+    ExpandirCandidatos = Table.ExpandTableColumn(
+        CruceInicial,
+        "CANDIDATOS",
+        {
+            "ID_CREDITO",
+            "FECHA DE MOV.",
+            "CODIGO MOV."
+        },
+        {
+            "ID_CREDITO",
+            "FECHA_CREDITO",
+            "CODIGO_CREDITO"
+        }
+    ),
+
+    // =====================================================
+    // 6. APLICAR VENTANA TEMPORAL
+    // =====================================================
+    FiltrarTiempo = Table.SelectRows(
+        ExpandirCandidatos,
+        each
+            Number.Abs(
+                Duration.TotalMinutes(
+                    [FECHA_CREDITO] - [#"FECHA DE MOV."]
                 )
-            in
-                Table.RowCount(DebitosCandidatos),
-        Int64.Type
-    ),
-
-    // =====================================================
-    // 7. DETERMINAR SI LA PAREJA ES UNICA
-    // =====================================================
-    IdentificarCreditoUnico = Table.AddColumn(
-        ContarCandidatosDebito,
-        "DATOS_CREDITO",
-        each
-            if [TOTAL_CANDIDATOS_DEBITO] = 1 then
-                let
-                    IdCredito = [CANDIDATOS]{0}[ID_CREDITO],
-
-                    CreditoEncontrado = Table.SelectRows(
-                        ContarDebitosCredito,
-                        each [ID_CREDITO] = IdCredito
-                    )
-                in
-                    if
-                        Table.RowCount(CreditoEncontrado) = 1
-                        and CreditoEncontrado{0}[TOTAL_CANDIDATOS_CREDITO] = 1
-                    then
-                        CreditoEncontrado{0}
-                    else
-                        null
-            else
-                null
-    ),
-
-    // =====================================================
-    // 8. CLASIFICAR LOS DEBITOS
-    // =====================================================
-    ClasificarDebitos = Table.AddColumn(
-        IdentificarCreditoUnico,
-        "ESTADO_CONCILIACION",
-        each
-            if [TOTAL_CANDIDATOS_DEBITO] = 0 then
-                "SOLO_DEBITO"
-
-            else if [TOTAL_CANDIDATOS_DEBITO] > 1 then
-                "AMBIGUO_DEBITO"
-
-            else if [DATOS_CREDITO] = null then
-                "AMBIGUO_CREDITO"
-
-            else
-                "CONCILIADO",
-        type text
-    ),
-
-    // =====================================================
-    // 9. EXTRAER DATOS DEL CREDITO CONCILIADO
-    // =====================================================
-    AgregarFechaCredito = Table.AddColumn(
-        ClasificarDebitos,
-        "FECHA_CREDITO",
-        each
-            if [ESTADO_CONCILIACION] = "CONCILIADO" then
-                [DATOS_CREDITO][#"FECHA DE MOV."]
-            else
-                null,
-        type nullable datetime
-    ),
-
-    AgregarCodigoCredito = Table.AddColumn(
-        AgregarFechaCredito,
-        "CODIGO_CREDITO",
-        each
-            if [ESTADO_CONCILIACION] = "CONCILIADO" then
-                [DATOS_CREDITO][#"CODIGO MOV."]
-            else
-                null
-    ),
-
-    AgregarCodigoDebito = Table.AddColumn(
-        AgregarCodigoCredito,
-        "CODIGO_DEBITO",
-        each [#"CODIGO MOV."]
+            ) <= ToleranciaMinutos
     ),
 
     AgregarFechaDebito = Table.AddColumn(
-        AgregarCodigoDebito,
+        FiltrarTiempo,
         "FECHA_DEBITO",
         each [#"FECHA DE MOV."],
         type datetime
     ),
 
-    AgregarEmisor = Table.AddColumn(
+    AgregarCodigoDebito = Table.AddColumn(
         AgregarFechaDebito,
+        "CODIGO_DEBITO",
+        each [#"CODIGO MOV."]
+    ),
+
+    AgregarDiferencia = Table.AddColumn(
+        AgregarCodigoDebito,
+        "DIFERENCIA_MINUTOS",
+        each
+            Number.Abs(
+                Duration.TotalMinutes(
+                    [FECHA_CREDITO] - [FECHA_DEBITO]
+                )
+            ),
+        type number
+    ),
+
+    // =====================================================
+    // 7. CONTAR CANDIDATOS POR DEBITO
+    // =====================================================
+    ConteoDebitos = Table.Group(
+        AgregarDiferencia,
+        {"ID_DEBITO"},
+        {
+            {
+                "TOTAL_CANDIDATOS_DEBITO",
+                each Table.RowCount(_),
+                Int64.Type
+            }
+        }
+    ),
+
+    // =====================================================
+    // 8. CONTAR CANDIDATOS POR CREDITO
+    // =====================================================
+    ConteoCreditos = Table.Group(
+        AgregarDiferencia,
+        {"ID_CREDITO"},
+        {
+            {
+                "TOTAL_CANDIDATOS_CREDITO",
+                each Table.RowCount(_),
+                Int64.Type
+            }
+        }
+    ),
+
+    // =====================================================
+    // 9. AGREGAR AMBOS CONTADORES A LAS POSIBLES PAREJAS
+    // =====================================================
+    UnirConteoDebitos = Table.NestedJoin(
+        AgregarDiferencia,
+        {"ID_DEBITO"},
+        ConteoDebitos,
+        {"ID_DEBITO"},
+        "CONTEO_DEBITOS",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirConteoDebitos = Table.ExpandTableColumn(
+        UnirConteoDebitos,
+        "CONTEO_DEBITOS",
+        {"TOTAL_CANDIDATOS_DEBITO"},
+        {"TOTAL_CANDIDATOS_DEBITO"}
+    ),
+
+    UnirConteoCreditos = Table.NestedJoin(
+        ExpandirConteoDebitos,
+        {"ID_CREDITO"},
+        ConteoCreditos,
+        {"ID_CREDITO"},
+        "CONTEO_CREDITOS",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirConteoCreditos = Table.ExpandTableColumn(
+        UnirConteoCreditos,
+        "CONTEO_CREDITOS",
+        {"TOTAL_CANDIDATOS_CREDITO"},
+        {"TOTAL_CANDIDATOS_CREDITO"}
+    ),
+
+    // =====================================================
+    // 10. CONFIRMAR SOLAMENTE PAREJAS MUTUAMENTE UNICAS
+    // =====================================================
+    ParejasConfirmadas = Table.SelectRows(
+        ExpandirConteoCreditos,
+        each
+            [TOTAL_CANDIDATOS_DEBITO] = 1
+            and [TOTAL_CANDIDATOS_CREDITO] = 1
+    ),
+
+    CreditosConfirmados = List.Distinct(
+        Table.Column(
+            ParejasConfirmadas,
+            "ID_CREDITO"
+        )
+    ),
+
+    // =====================================================
+    // 11. RESULTADO DE LOS DEBITOS
+    // =====================================================
+    UnirConteoDebitoOriginal = Table.NestedJoin(
+        DebitosIndexados,
+        {"ID_DEBITO"},
+        ConteoDebitos,
+        {"ID_DEBITO"},
+        "CONTEO",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirConteoDebitoOriginal = Table.ExpandTableColumn(
+        UnirConteoDebitoOriginal,
+        "CONTEO",
+        {"TOTAL_CANDIDATOS_DEBITO"},
+        {"TOTAL_CANDIDATOS_DEBITO"}
+    ),
+
+    ReemplazarConteoNuloDebito = Table.ReplaceValue(
+        ExpandirConteoDebitoOriginal,
+        null,
+        0,
+        Replacer.ReplaceValue,
+        {"TOTAL_CANDIDATOS_DEBITO"}
+    ),
+
+    UnirParejasConfirmadas = Table.NestedJoin(
+        ReemplazarConteoNuloDebito,
+        {"ID_DEBITO"},
+        ParejasConfirmadas,
+        {"ID_DEBITO"},
+        "PAREJA",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirParejasConfirmadas = Table.ExpandTableColumn(
+        UnirParejasConfirmadas,
+        "PAREJA",
+        {
+            "ID_CREDITO",
+            "FECHA_CREDITO",
+            "CODIGO_CREDITO",
+            "DIFERENCIA_MINUTOS",
+            "TOTAL_CANDIDATOS_CREDITO"
+        },
+        {
+            "ID_CREDITO",
+            "FECHA_CREDITO",
+            "CODIGO_CREDITO",
+            "DIFERENCIA_MINUTOS",
+            "TOTAL_CANDIDATOS_CREDITO"
+        }
+    ),
+
+    ClasificarDebitos = Table.AddColumn(
+        ExpandirParejasConfirmadas,
+        "ESTADO_CONCILIACION",
+        each
+            if [TOTAL_CANDIDATOS_DEBITO] = 0 then
+                "SOLO_DEBITO"
+            else if [ID_CREDITO] = null then
+                "AMBIGUO"
+            else
+                "CONCILIADO",
+        type text
+    ),
+
+    AgregarEmisor = Table.AddColumn(
+        ClasificarDebitos,
         "ID_EMISOR",
         each [ID_EMISOR_CARTOLA],
         type text
@@ -235,44 +307,28 @@ let
         type text
     ),
 
-    AgregarMonto = Table.AddColumn(
+    AgregarMontoDebito = Table.AddColumn(
         AgregarBeneficiario,
         "MONTO_OPERACION",
         each [#"MONTO MOV."],
         type number
     ),
 
-    AgregarDiferencia = Table.AddColumn(
-        AgregarMonto,
-        "DIFERENCIA_MINUTOS",
-        each
-            if [FECHA_CREDITO] = null then
-                null
-            else
-                Number.Abs(
-                    Duration.TotalMinutes(
-                        [FECHA_CREDITO] - [FECHA_DEBITO]
-                    )
-                ),
-        type nullable number
+    AgregarFechaDebitoResultado = Table.AddColumn(
+        AgregarMontoDebito,
+        "FECHA_DEBITO",
+        each [#"FECHA DE MOV."],
+        type datetime
     ),
 
-    AgregarCandidatosCredito = Table.AddColumn(
-        AgregarDiferencia,
-        "TOTAL_CANDIDATOS_CREDITO",
-        each
-            if [DATOS_CREDITO] = null then
-                null
-            else
-                [DATOS_CREDITO][TOTAL_CANDIDATOS_CREDITO],
-        Int64.Type
+    AgregarCodigoDebitoResultado = Table.AddColumn(
+        AgregarFechaDebitoResultado,
+        "CODIGO_DEBITO",
+        each [#"CODIGO MOV."]
     ),
 
-    // =====================================================
-    // 10. RESULTADO DE LOS DEBITOS
-    // =====================================================
     ResultadoDebitos = Table.SelectColumns(
-        AgregarCandidatosCredito,
+        AgregarCodigoDebitoResultado,
         {
             "ESTADO_CONCILIACION",
             "ID_EMISOR",
@@ -289,87 +345,115 @@ let
     ),
 
     // =====================================================
-    // 11. IDENTIFICAR CREDITOS SIN PAREJA CONFIRMADA
+    // 12. IDENTIFICAR CREDITOS SIN PAREJA CONFIRMADA
     // =====================================================
-    CreditosSinConciliar = Table.SelectRows(
-        ContarDebitosCredito,
-        each [TOTAL_CANDIDATOS_CREDITO] <> 1
+    UnirConteoCreditoOriginal = Table.NestedJoin(
+        CreditosIndexados,
+        {"ID_CREDITO"},
+        ConteoCreditos,
+        {"ID_CREDITO"},
+        "CONTEO",
+        JoinKind.LeftOuter
+    ),
+
+    ExpandirConteoCreditoOriginal = Table.ExpandTableColumn(
+        UnirConteoCreditoOriginal,
+        "CONTEO",
+        {"TOTAL_CANDIDATOS_CREDITO"},
+        {"TOTAL_CANDIDATOS_CREDITO"}
+    ),
+
+    ReemplazarConteoNuloCredito = Table.ReplaceValue(
+        ExpandirConteoCreditoOriginal,
+        null,
+        0,
+        Replacer.ReplaceValue,
+        {"TOTAL_CANDIDATOS_CREDITO"}
+    ),
+
+    FiltrarCreditosPendientes = Table.SelectRows(
+        ReemplazarConteoNuloCredito,
+        each
+            not List.Contains(
+                CreditosConfirmados,
+                [ID_CREDITO]
+            )
     ),
 
     ClasificarCreditos = Table.AddColumn(
-        CreditosSinConciliar,
+        FiltrarCreditosPendientes,
         "ESTADO_CONCILIACION",
         each
             if [TOTAL_CANDIDATOS_CREDITO] = 0 then
                 "SOLO_CREDITO"
             else
-                "AMBIGUO_CREDITO",
+                "AMBIGUO",
         type text
     ),
 
-    CreditosAgregarEmisor = Table.AddColumn(
+    CreditoAgregarEmisor = Table.AddColumn(
         ClasificarCreditos,
         "ID_EMISOR",
         each null,
         type nullable text
     ),
 
-    CreditosAgregarBeneficiario = Table.AddColumn(
-        CreditosAgregarEmisor,
+    CreditoAgregarBeneficiario = Table.AddColumn(
+        CreditoAgregarEmisor,
         "ID_BENEFICIARIO",
         each [ID_BENEFICIARIO_CARTOLA],
         type text
     ),
 
-    CreditosAgregarMonto = Table.AddColumn(
-        CreditosAgregarBeneficiario,
+    CreditoAgregarMonto = Table.AddColumn(
+        CreditoAgregarBeneficiario,
         "MONTO_OPERACION",
         each [#"MONTO MOV."],
         type number
     ),
 
-    CreditosAgregarFechaDebito = Table.AddColumn(
-        CreditosAgregarMonto,
+    CreditoAgregarFechaDebito = Table.AddColumn(
+        CreditoAgregarMonto,
         "FECHA_DEBITO",
         each null,
         type nullable datetime
     ),
 
-    CreditosAgregarFechaCredito = Table.AddColumn(
-        CreditosAgregarFechaDebito,
+    CreditoAgregarFecha = Table.AddColumn(
+        CreditoAgregarFechaDebito,
         "FECHA_CREDITO",
         each [#"FECHA DE MOV."],
         type datetime
     ),
 
-    CreditosAgregarDiferencia = Table.AddColumn(
-        CreditosAgregarFechaCredito,
+    CreditoAgregarDiferencia = Table.AddColumn(
+        CreditoAgregarFecha,
         "DIFERENCIA_MINUTOS",
         each null,
         type nullable number
     ),
 
-    CreditosAgregarCodigoDebito = Table.AddColumn(
-        CreditosAgregarDiferencia,
+    CreditoAgregarCodigoDebito = Table.AddColumn(
+        CreditoAgregarDiferencia,
         "CODIGO_DEBITO",
         each null
     ),
 
-    CreditosAgregarCodigoCredito = Table.AddColumn(
-        CreditosAgregarCodigoDebito,
+    CreditoAgregarCodigo = Table.AddColumn(
+        CreditoAgregarCodigoDebito,
         "CODIGO_CREDITO",
         each [#"CODIGO MOV."]
     ),
 
-    CreditosAgregarCandidatosDebito = Table.AddColumn(
-        CreditosAgregarCodigoCredito,
+    CreditoAgregarConteoDebito = Table.AddColumn(
+        CreditoAgregarCodigo,
         "TOTAL_CANDIDATOS_DEBITO",
         each null,
         Int64.Type
     ),
 
     ResultadoCreditos = Table.SelectColumns(
-        CreditosAgregarCandidatosDebito,
+        CreditoAgregarConteoDebito,
         {
             "ESTADO_CONCILIACION",
             "ID_EMISOR",
@@ -386,7 +470,7 @@ let
     ),
 
     // =====================================================
-    // 12. UNIFICAR RESULTADOS
+    // 13. UNIFICAR RESULTADOS
     // =====================================================
     CombinarResultados = Table.Combine(
         {
