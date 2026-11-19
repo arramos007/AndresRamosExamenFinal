@@ -1,51 +1,61 @@
 let
-    Origen = qryPerfilParticipantes,
+    Origen = qryDetalleBeneficiariosOrigen,
 
-    FiltrarSalidasExternas = Table.SelectRows(
+    AgruparDatos = Table.Group(
         Origen,
-        each
-            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-            and [ID_TITULAR] <> null
-            and [ID_TITULAR] <> ""
-            and [ID_BENEFICIARIO] <> null
-            and [ID_BENEFICIARIO] <> ""
-    ),
-
-    SeleccionarColumnas = Table.SelectColumns(
-        FiltrarSalidasExternas,
         {
-            "ID_TITULAR",
-            "ID_EMISOR",
             "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "MONTO MOV.",
-            "CLAVE_MOVIMIENTO"
+            "PERFIL_ORIGEN"
+        },
+        {
+            {
+                "TOTAL_MOVIMIENTOS",
+                each Table.RowCount(_),
+                Int64.Type
+            },
+            {
+                "TOTAL_PARTICIPANTES_ORIGEN",
+                each List.Count(
+                    List.Distinct(
+                        List.RemoveNulls(
+                            Table.Column(_, "ID_TITULAR")
+                        )
+                    )
+                ),
+                Int64.Type
+            },
+            {
+                "MONTO_TOTAL",
+                each List.Sum(
+                    List.RemoveNulls(
+                        Table.Column(_, "MONTO MOV.")
+                    )
+                ),
+                type number
+            },
+            {
+                "FECHA_PRIMER_MOVIMIENTO",
+                each List.Min(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
+                type datetime
+            },
+            {
+                "FECHA_ULTIMO_MOVIMIENTO",
+                each List.Max(
+                    Table.Column(_, "FECHA DE MOV.")
+                ),
+                type datetime
+            }
         }
     ),
 
-    CombinarPerfiles = Table.NestedJoin(
-        SeleccionarColumnas,
-        {"ID_TITULAR"},
-        qryClasificacionParticipantes,
-        {"ID_TITULAR"},
-        "DatosPerfil",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirPerfil = Table.ExpandTableColumn(
-        CombinarPerfiles,
-        "DatosPerfil",
-        {"PERFIL_PRELIMINAR"},
-        {"PERFIL_ORIGEN"}
-    ),
-
-    ClasificarPerfil = Table.ReplaceValue(
-        ExpandirPerfil,
-        null,
-        "SIN_PERFIL_CLASIFICADO",
-        Replacer.ReplaceValue,
-        {"PERFIL_ORIGEN"}
+    OrdenarResultados = Table.Sort(
+        AgruparDatos,
+        {
+            {"ID_BENEFICIARIO", Order.Ascending},
+            {"MONTO_TOTAL", Order.Descending}
+        }
     )
 in
-    ClasificarPerfil
+    OrdenarResultados
