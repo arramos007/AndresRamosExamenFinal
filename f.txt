@@ -1,42 +1,93 @@
 let
-    Origen = qryEndososEconomicos,
+    Origen = qryRelacionesInternas,
 
-    AgruparEndosos = Table.Group(
+    ComoEmisor = Table.Group(
         Origen,
+        {"ID_EMISOR"},
         {
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "TIPO_OPERACION"
-        },
-        {
-            {
-                "TOTAL_OPERACIONES",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL",
-                each List.Sum(List.RemoveNulls([MONTO_OPERACION])),
-                type number
-            },
-            {
-                "FECHA_PRIMERA_OPERACION",
-                each List.Min([FECHA_OPERACION]),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMA_OPERACION",
-                each List.Max([FECHA_OPERACION]),
-                type datetime
-            }
+            {"TOTAL_TRANSFERENCIAS_EMITIDAS", each List.Sum([TOTAL_OPERACIONES]), Int64.Type},
+            {"MONTO_EMITIDO", each List.Sum([MONTO_TOTAL]), type number},
+            {"TOTAL_BENEFICIARIOS", each List.Count(List.Distinct(List.RemoveNulls([ID_BENEFICIARIO]))), Int64.Type}
         }
     ),
 
-    OrdenarResultados = Table.Sort(
-        AgruparEndosos,
+    RenombrarEmisor = Table.RenameColumns(
+        ComoEmisor,
+        {{"ID_EMISOR", "ID_PARTICIPANTE"}}
+    ),
+
+    ComoBeneficiario = Table.Group(
+        Origen,
+        {"ID_BENEFICIARIO"},
         {
-            {"MONTO_TOTAL", Order.Descending}
+            {"TOTAL_TRANSFERENCIAS_RECIBIDAS", each List.Sum([TOTAL_OPERACIONES]), Int64.Type},
+            {"MONTO_RECIBIDO", each List.Sum([MONTO_TOTAL]), type number},
+            {"TOTAL_EMISORES", each List.Count(List.Distinct(List.RemoveNulls([ID_EMISOR]))), Int64.Type}
+        }
+    ),
+
+    RenombrarBeneficiario = Table.RenameColumns(
+        ComoBeneficiario,
+        {{"ID_BENEFICIARIO", "ID_PARTICIPANTE"}}
+    ),
+
+    Combinar = Table.NestedJoin(
+        RenombrarEmisor,
+        {"ID_PARTICIPANTE"},
+        RenombrarBeneficiario,
+        {"ID_PARTICIPANTE"},
+        "DatosRecepcion",
+        JoinKind.FullOuter
+    ),
+
+    Expandir = Table.ExpandTableColumn(
+        Combinar,
+        "DatosRecepcion",
+        {
+            "ID_PARTICIPANTE",
+            "TOTAL_TRANSFERENCIAS_RECIBIDAS",
+            "MONTO_RECIBIDO",
+            "TOTAL_EMISORES"
+        }
+    ),
+
+    UnificarId = Table.AddColumn(
+        Expandir,
+        "ID_FINAL",
+        each if [ID_PARTICIPANTE] = null then [ID_PARTICIPANTE.1] else [ID_PARTICIPANTE],
+        type text
+    ),
+
+    Limpiar = Table.RemoveColumns(
+        UnificarId,
+        {"ID_PARTICIPANTE", "ID_PARTICIPANTE.1"}
+    ),
+
+    RenombrarId = Table.RenameColumns(
+        Limpiar,
+        {{"ID_FINAL", "ID_PARTICIPANTE"}}
+    ),
+
+    ReemplazarNulos = Table.ReplaceValue(
+        RenombrarId,
+        null,
+        0,
+        Replacer.ReplaceValue,
+        {
+            "TOTAL_TRANSFERENCIAS_EMITIDAS",
+            "MONTO_EMITIDO",
+            "TOTAL_BENEFICIARIOS",
+            "TOTAL_TRANSFERENCIAS_RECIBIDAS",
+            "MONTO_RECIBIDO",
+            "TOTAL_EMISORES"
+        }
+    ),
+
+    Ordenar = Table.Sort(
+        ReemplazarNulos,
+        {
+            {"MONTO_RECIBIDO", Order.Descending}
         }
     )
 in
-    OrdenarResultados
+    Ordenar
