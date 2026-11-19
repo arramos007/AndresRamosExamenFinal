@@ -1,178 +1,41 @@
-
 let
-    Origen = qryDetalleEndosos,
+    Origen = qryEndososEconomicos,
 
-    AgruparOperaciones = Table.Group(
+    AgruparEndosos = Table.Group(
         Origen,
-        {"CLAVE_MOVIMIENTO"},
+        {
+            "ID_EMISOR",
+            "ID_BENEFICIARIO",
+            "TIPO_OPERACION"
+        },
         {
             {
-                "DETALLE",
-                each _,
-                type table
-            },
-            {
-                "TOTAL_REGISTROS_ORIGINALES",
+                "TOTAL_OPERACIONES",
                 each Table.RowCount(_),
                 Int64.Type
             },
             {
-                "TOTAL_RELACIONES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "REL")
-                        )
-                    )
-                ),
-                Int64.Type
+                "MONTO_TOTAL",
+                each List.Sum(List.RemoveNulls([MONTO_OPERACION])),
+                type number
             },
             {
-                "RELACIONES",
-                each Text.Combine(
-                    List.Transform(
-                        List.Sort(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    Table.Column(_, "REL")
-                                )
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
+                "FECHA_PRIMERA_OPERACION",
+                each List.Min([FECHA_OPERACION]),
+                type datetime
             },
             {
-                "TOTAL_EMPRESAS",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "EMPRESAS",
-                each Text.Combine(
-                    List.Transform(
-                        List.Sort(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    Table.Column(_, "RUC SOCIAL EMPLEADOR")
-                                )
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "RAZONES_SOCIALES",
-                each Text.Combine(
-                    List.Transform(
-                        List.Sort(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    Table.Column(_, "RAZON SOCIAL EMPLEADOR")
-                                )
-                            )
-                        ),
-                        Text.From
-                    ),
-                    " | "
-                ),
-                type text
-            },
-            {
-                "TOTAL_TITULARES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_TITULAR")
-                        )
-                    )
-                ),
-                Int64.Type
+                "FECHA_ULTIMA_OPERACION",
+                each List.Max([FECHA_OPERACION]),
+                type datetime
             }
         }
     ),
 
-    AgregarDatosEconomicos = Table.AddColumn(
-        AgruparOperaciones,
-        "DATOS_OPERACION",
-        each [DETALLE]{0}
-    ),
-
-    ExpandirDatosEconomicos = Table.ExpandRecordColumn(
-        AgregarDatosEconomicos,
-        "DATOS_OPERACION",
-        {
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "NOMBRE MOV.",
-            "TIPO MOV.",
-            "TIPO_FLUJO",
-            "TIPO_OPERACION",
-            "MONTO MOV.",
-            "SALDO NCD",
-            "EN TRAMA EMISOR",
-            "EN TRAMA BENEF.",
-            "ESTADO_TRAZABILIDAD"
-        },
-        {
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA_OPERACION",
-            "CODIGO_MOVIMIENTO",
-            "NOMBRE_MOVIMIENTO",
-            "TIPO_MOVIMIENTO",
-            "TIPO_FLUJO",
-            "TIPO_OPERACION",
-            "MONTO_OPERACION",
-            "SALDO_NCD",
-            "EN_TRAMA_EMISOR",
-            "EN_TRAMA_BENEFICIARIO",
-            "ESTADO_TRAZABILIDAD"
-        }
-    ),
-
-    ClasificarRepresentacion = Table.AddColumn(
-        ExpandirDatosEconomicos,
-        "TIPO_REPRESENTACION",
-        each
-            if [TOTAL_REGISTROS_ORIGINALES] = 1 then
-                "REGISTRO_UNICO"
-            else if [TOTAL_EMPRESAS] > 1 and [TOTAL_RELACIONES] > 1 then
-                "MULTIPLES_EMPRESAS_Y_RELACIONES"
-            else if [TOTAL_EMPRESAS] > 1 then
-                "MULTIPLES_EMPRESAS"
-            else if [TOTAL_RELACIONES] > 1 then
-                "MULTIPLES_RELACIONES"
-            else
-                "REPETICION_POR_VERIFICAR",
-        type text
-    ),
-
-    QuitarDetalle = Table.RemoveColumns(
-        ClasificarRepresentacion,
-        {"DETALLE"}
-    ),
-
     OrdenarResultados = Table.Sort(
-        QuitarDetalle,
+        AgruparEndosos,
         {
-            {"FECHA_OPERACION", Order.Ascending},
-            {"ID_EMISOR", Order.Ascending}
+            {"MONTO_TOTAL", Order.Descending}
         }
     )
 in
