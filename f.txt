@@ -1,47 +1,18 @@
-qry09_EndososCredito
+qry10_MovimientosTipificados
 
 
 let
     Origen = qry06_MovimientosConParticipantes,
 
-    FiltrarEndososCredito =
-        Table.SelectRows(
+    TiposCorrectos =
+        Table.TransformColumnTypes(
             Origen,
-            each [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
-        ),
-
-    SeleccionarColumnas =
-        Table.SelectColumns(
-            FiltrarEndososCredito,
             {
-                "ID_REGISTRO_ORIGEN",
-                "ID_PARTICIPANTE_TITULAR",
-                "ID_PARTICIPANTE_EMISOR",
-                "ID_PARTICIPANTE_BENEFICIARIO",
-                "IDENTIFICACION EMPLEADO (EF)",
-                "NOMBRE EMPLEADO (EF)",
-                "IDENTIFICACION DEL EMISOR / ENDOSANTE",
-                "NOMBRE DEL EMISOR / ENDOSANTE",
-                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-                "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-                "FECHA DE MOV.",
-                "MONTO MOV.",
-                "CODIGO MOV.",
-                "CODIGO LIQUID.",
-                "INST.",
-                "SALDO NCD",
-                "EN TRAMA EMISOR",
-                "EN TRAMA BENEF."
-            }
-        ),
-
-    Resultado =
-        Table.Sort(
-            SeleccionarColumnas,
-            {
-                {"FECHA DE MOV.", Order.Ascending},
-                {"ID_REGISTRO_ORIGEN", Order.Ascending}
-            }
+                {"FECHA DE MOV.", type datetime},
+                {"MONTO MOV.", type number},
+                {"SALDO NCD", type number}
+            },
+            "en-US"
         )
 in
-    Resultado
+    TiposCorrectos
