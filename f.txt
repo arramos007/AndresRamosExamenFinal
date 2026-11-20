@@ -1,61 +1,60 @@
+qry07_MovimientosPorEmpresa
+
 
 let
-    Origen = qry05_MovimientosEconomicos,
+    Origen = qry06_MovimientosConParticipantes,
 
-    UnirParticipanteTitular =
+    UnirRelacionesEmpresariales =
         Table.NestedJoin(
             Origen,
-            {"IDENTIFICACION EMPLEADO (EF)"},
-            qry02_Participantes,
-            {"IDENTIFICACION_PARTICIPANTE"},
-            "PARTICIPANTE_TITULAR",
+            {"ID_PARTICIPANTE_TITULAR"},
+            qry04_RelacionesEmpresariales,
+            {"ID_PARTICIPANTE"},
+            "RELACIONES_EMPRESARIALES",
             JoinKind.LeftOuter
         ),
 
-    ExpandirParticipanteTitular =
+    ExpandirRelacionesEmpresariales =
         Table.ExpandTableColumn(
-            UnirParticipanteTitular,
-            "PARTICIPANTE_TITULAR",
-            {"ID_PARTICIPANTE"},
-            {"ID_PARTICIPANTE_TITULAR"}
-        ),
-
-    UnirParticipanteEmisor =
-        Table.NestedJoin(
-            ExpandirParticipanteTitular,
-            {"IDENTIFICACION DEL EMISOR / ENDOSANTE"},
-            qry02_Participantes,
-            {"IDENTIFICACION_PARTICIPANTE"},
-            "PARTICIPANTE_EMISOR",
-            JoinKind.LeftOuter
-        ),
-
-    ExpandirParticipanteEmisor =
-        Table.ExpandTableColumn(
-            UnirParticipanteEmisor,
-            "PARTICIPANTE_EMISOR",
-            {"ID_PARTICIPANTE"},
-            {"ID_PARTICIPANTE_EMISOR"}
-        ),
-
-    UnirParticipanteBeneficiario =
-        Table.NestedJoin(
-            ExpandirParticipanteEmisor,
+            UnirRelacionesEmpresariales,
+            "RELACIONES_EMPRESARIALES",
             {
-                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
+                "ID_RELACION",
+                "ID_EMPRESA",
+                "TIPO_RELACION",
+                "RELACIONES_EMPLEADO"
             },
-            qry02_Participantes,
-            {"IDENTIFICACION_PARTICIPANTE"},
-            "PARTICIPANTE_BENEFICIARIO",
-            JoinKind.LeftOuter
+            {
+                "ID_RELACION",
+                "ID_EMPRESA",
+                "TIPO_RELACION",
+                "RELACIONES_EMPLEADO"
+            }
         ),
 
-    ExpandirParticipanteBeneficiario =
-        Table.ExpandTableColumn(
-            UnirParticipanteBeneficiario,
-            "PARTICIPANTE_BENEFICIARIO",
-            {"ID_PARTICIPANTE"},
-            {"ID_PARTICIPANTE_BENEFICIARIO"}
+    Resultado =
+        Table.ReorderColumns(
+            ExpandirRelacionesEmpresariales,
+            {
+                "ID_REGISTRO_ORIGEN",
+                "ID_RELACION",
+                "ID_PARTICIPANTE_TITULAR",
+                "ID_EMPRESA",
+                "TIPO_RELACION",
+                "RELACIONES_EMPLEADO"
+            }
+            &
+            List.RemoveItems(
+                Table.ColumnNames(ExpandirRelacionesEmpresariales),
+                {
+                    "ID_REGISTRO_ORIGEN",
+                    "ID_RELACION",
+                    "ID_PARTICIPANTE_TITULAR",
+                    "ID_EMPRESA",
+                    "TIPO_RELACION",
+                    "RELACIONES_EMPLEADO"
+                }
+            )
         )
 in
-    ExpandirParticipanteBeneficiario
+    Resultado
