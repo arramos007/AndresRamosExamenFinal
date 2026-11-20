@@ -2,15 +2,15 @@
 let
     Origen = qry10_MovimientosTipificados,
 
-    FiltrarEndososDebito =
+    FiltrarEndososCredito =
         Table.SelectRows(
             Origen,
-            each [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
+            each [CLASIFICACION_MOVIMIENTO] = "ENDOSO_RECIBIDO"
         ),
 
     SeleccionarColumnas =
         Table.SelectColumns(
-            FiltrarEndososDebito,
+            FiltrarEndososCredito,
             {
                 "ID_REGISTRO_ORIGEN",
                 "ID_PARTICIPANTE_TITULAR",
