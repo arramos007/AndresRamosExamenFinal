@@ -1,78 +1,203 @@
-qry16_ValidarEndososConciliados
+qry17_EndososConRelacionesEmpresariales
 
 
 let
+    // 1. Obtener los endosos conciliados
     Origen = qry15_EndososConciliados,
 
-    TotalFilas =
-        Table.RowCount(Origen),
-
-    DebitosDistintos =
-        List.Count(
-            List.Distinct(
-                Origen[ID_REGISTRO_DEBITO]
-            )
+    AgregarIDOperacion =
+        Table.AddColumn(
+            Origen,
+            "ID_OPERACION",
+            each [ID_REGISTRO_DEBITO],
+            Int64.Type
         ),
 
-    CreditosDistintos =
-        List.Count(
-            List.Distinct(
-                Origen[ID_REGISTRO_CREDITO]
-            )
-        ),
+    // 2. Agrupar relaciones por participante y empresa
+    RelacionesOrigen =
+        qry04_RelacionesEmpresariales,
 
-    ImportesIguales =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [MONTO_DEBITO] = [MONTO_CREDITO]
-            )
-        ),
-
-    DiferenciasCorrectas =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    [DIFERENCIA_SEGUNDOS] <= 3
-                    and [DIFERENCIA_SEGUNDOS] >= 0
-            )
-        ),
-
-    Resultado =
-        #table(
-            {"VALIDACION", "RESULTADO", "ESPERADO", "ESTADO"},
+    AgruparRelaciones =
+        Table.Group(
+            RelacionesOrigen,
+            {
+                "ID_PARTICIPANTE",
+                "ID_EMPRESA"
+            },
             {
                 {
-                    "TOTAL DE FILAS",
-                    TotalFilas,
-                    1338,
-                    if TotalFilas = 1338 then "CORRECTO" else "REVISAR"
+                    "TIPOS_RELACION",
+                    each
+                        Text.Combine(
+                            List.Transform(
+                                List.Distinct(
+                                    List.RemoveNulls(
+                                        [TIPO_RELACION]
+                                    )
+                                ),
+                                each Text.From(_)
+                            ),
+                            ", "
+                        ),
+                    type text
                 },
                 {
-                    "DEBITOS DISTINTOS",
-                    DebitosDistintos,
-                    1338,
-                    if DebitosDistintos = 1338 then "CORRECTO" else "REVISAR"
-                },
-                {
-                    "CREDITOS DISTINTOS",
-                    CreditosDistintos,
-                    1338,
-                    if CreditosDistintos = 1338 then "CORRECTO" else "REVISAR"
-                },
-                {
-                    "IMPORTES IGUALES",
-                    ImportesIguales,
-                    1338,
-                    if ImportesIguales = 1338 then "CORRECTO" else "REVISAR"
-                },
-                {
-                    "DIFERENCIAS HASTA 3 SEGUNDOS",
-                    DiferenciasCorrectas,
-                    1338,
-                    if DiferenciasCorrectas = 1338 then "CORRECTO" else "REVISAR"
+                    "RELACIONES_EMPLEADO",
+                    each
+                        Text.Combine(
+                            List.Transform(
+                                List.Distinct(
+                                    List.RemoveNulls(
+                                        [RELACIONES_EMPLEADO]
+                                    )
+                                ),
+                                each Text.From(_)
+                            ),
+                            " | "
+                        ),
+                    type text
                 }
+            }
+        ),
+
+    // 3. Incorporar empresas relacionadas con el emisor
+    UnirEmpresasEmisor =
+        Table.NestedJoin(
+            AgregarIDOperacion,
+            {"ID_PARTICIPANTE_EMISOR_CARTOLA"},
+            AgruparRelaciones,
+            {"ID_PARTICIPANTE"},
+            "RELACIONES_EMISOR",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirEmpresasEmisor =
+        Table.ExpandTableColumn(
+            UnirEmpresasEmisor,
+            "RELACIONES_EMISOR",
+            {
+                "ID_EMPRESA",
+                "TIPOS_RELACION",
+                "RELACIONES_EMPLEADO"
+            },
+            {
+                "ID_EMPRESA_EMISOR",
+                "TIPOS_RELACION_EMISOR",
+                "RELACIONES_EMPLEADO_EMISOR"
+            }
+        ),
+
+    // 4. Incorporar razón social y RUC del emisor
+    UnirDatosEmpresaEmisor =
+        Table.NestedJoin(
+            ExpandirEmpresasEmisor,
+            {"ID_EMPRESA_EMISOR"},
+            qry03_Empresas,
+            {"ID_EMPRESA"},
+            "EMPRESA_EMISOR",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirDatosEmpresaEmisor =
+        Table.ExpandTableColumn(
+            UnirDatosEmpresaEmisor,
+            "EMPRESA_EMISOR",
+            {
+                "RUC_EMPRESA",
+                "RAZON_SOCIAL"
+            },
+            {
+                "RUC_EMPRESA_EMISOR",
+                "RAZON_SOCIAL_EMISOR"
+            }
+        ),
+
+    // 5. Incorporar empresas relacionadas con el beneficiario
+    UnirEmpresasBeneficiario =
+        Table.NestedJoin(
+            ExpandirDatosEmpresaEmisor,
+            {"ID_PARTICIPANTE_BENEFICIARIO_CARTOLA"},
+            AgruparRelaciones,
+            {"ID_PARTICIPANTE"},
+            "RELACIONES_BENEFICIARIO",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirEmpresasBeneficiario =
+        Table.ExpandTableColumn(
+            UnirEmpresasBeneficiario,
+            "RELACIONES_BENEFICIARIO",
+            {
+                "ID_EMPRESA",
+                "TIPOS_RELACION",
+                "RELACIONES_EMPLEADO"
+            },
+            {
+                "ID_EMPRESA_BENEFICIARIO",
+                "TIPOS_RELACION_BENEFICIARIO",
+                "RELACIONES_EMPLEADO_BENEFICIARIO"
+            }
+        ),
+
+    // 6. Incorporar razón social y RUC del beneficiario
+    UnirDatosEmpresaBeneficiario =
+        Table.NestedJoin(
+            ExpandirEmpresasBeneficiario,
+            {"ID_EMPRESA_BENEFICIARIO"},
+            qry03_Empresas,
+            {"ID_EMPRESA"},
+            "EMPRESA_BENEFICIARIO",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirDatosEmpresaBeneficiario =
+        Table.ExpandTableColumn(
+            UnirDatosEmpresaBeneficiario,
+            "EMPRESA_BENEFICIARIO",
+            {
+                "RUC_EMPRESA",
+                "RAZON_SOCIAL"
+            },
+            {
+                "RUC_EMPRESA_BENEFICIARIO",
+                "RAZON_SOCIAL_BENEFICIARIO"
+            }
+        ),
+
+    // 7. Identificar el tipo de conexión empresarial
+    AgregarTipoConexion =
+        Table.AddColumn(
+            ExpandirDatosEmpresaBeneficiario,
+            "TIPO_CONEXION_EMPRESARIAL",
+            each
+                if [ID_EMPRESA_EMISOR] = null
+                    and [ID_EMPRESA_BENEFICIARIO] = null then
+                    "SIN_RELACIONES_EMPRESARIALES_IDENTIFICADAS"
+
+                else if [ID_EMPRESA_EMISOR] = null then
+                    "SOLO_EMPRESA_BENEFICIARIO_IDENTIFICADA"
+
+                else if [ID_EMPRESA_BENEFICIARIO] = null then
+                    "SOLO_EMPRESA_EMISOR_IDENTIFICADA"
+
+                else if [ID_EMPRESA_EMISOR] =
+                    [ID_EMPRESA_BENEFICIARIO] then
+                    "MISMA_EMPRESA"
+
+                else
+                    "ENTRE_EMPRESAS_DISTINTAS",
+            type text
+        ),
+
+    // 8. Ordenar por fecha y operación
+    Resultado =
+        Table.Sort(
+            AgregarTipoConexion,
+            {
+                {"FECHA_DEBITO", Order.Ascending},
+                {"ID_OPERACION", Order.Ascending},
+                {"ID_EMPRESA_EMISOR", Order.Ascending},
+                {"ID_EMPRESA_BENEFICIARIO", Order.Ascending}
             }
         )
 in
