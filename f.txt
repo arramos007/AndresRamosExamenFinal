@@ -1,35 +1,40 @@
-qry28_RutasEconomicasDirectas
-
 
 let
-    // 1. Obtener exclusivamente endosos conciliados
+    // 1. Origen: operaciones conciliadas
     Origen =
         qry15_EndososConciliados,
 
-    // 2. Seleccionar los datos de cada operación
+    // 2. Seleccionar columnas existentes
     SeleccionarColumnas =
         Table.SelectColumns(
             Origen,
             {
-                "ID_OPERACION",
                 "ID_REGISTRO_DEBITO",
                 "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_EMISOR_CARTOLA",
-                "IDENTIFICACION_EMISOR",
-                "NOMBRE_EMISOR",
-                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
-                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
-                "NOMBRE_BENEFICIARIO_CARTOLA",
                 "FECHA_DEBITO",
                 "FECHA_CREDITO",
                 "MONTO_DEBITO",
                 "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS"
+                "DIFERENCIA_SEGUNDOS",
+                "ID_PARTICIPANTE_EMISOR_CARTOLA",
+                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
+                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
+                "IDENTIFICACION_EMISOR",
+                "NOMBRE_EMISOR",
+                "IDENTIFICACION_BENEFICIARIO",
+                "NOMBRE_BENEFICIARIO",
+                "MARCA_TRAMA_EMISOR",
+                "MARCA_TRAMA_BENEFICIARIO",
+                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
+                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
+                "NOMBRE_BENEFICIARIO_CARTOLA",
+                "INST_DEBITO",
+                "TIPO_OPERACION"
             }
         ),
 
-    // 3. Identificar el origen de la ruta
-    RenombrarEmisor =
+    // 3. Identificar origen de la ruta
+    RenombrarOrigen =
         Table.RenameColumns(
             SeleccionarColumnas,
             {
@@ -48,10 +53,10 @@ let
             }
         ),
 
-    // 4. Identificar el destino de la ruta
-    RenombrarBeneficiario =
+    // 4. Identificar destino de la ruta
+    RenombrarDestino =
         Table.RenameColumns(
-            RenombrarEmisor,
+            RenombrarOrigen,
             {
                 {
                     "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
@@ -68,19 +73,28 @@ let
             }
         ),
 
-    // 5. Asignar nivel de ruta directa
-    AgregarNivel =
+    // 5. Identificador técnico de ruta
+    AgregarIDRuta =
         Table.AddColumn(
-            RenombrarBeneficiario,
+            RenombrarDestino,
+            "ID_RUTA",
+            each [ID_REGISTRO_DEBITO],
+            Int64.Type
+        ),
+
+    // 6. Número de salto
+    AgregarNumeroSalto =
+        Table.AddColumn(
+            AgregarIDRuta,
             "NUMERO_SALTO",
             each 1,
             Int64.Type
         ),
 
-    // 6. Identificar tipo de conexión
+    // 7. Clasificar tipo de conexión
     AgregarTipoRuta =
         Table.AddColumn(
-            AgregarNivel,
+            AgregarNumeroSalto,
             "TIPO_RUTA",
             each
                 if [ID_PARTICIPANTE_ORIGEN] =
@@ -91,7 +105,7 @@ let
             type text
         ),
 
-    // 7. Identificar nivel de evidencia
+    // 8. Nivel de evidencia
     AgregarEvidencia =
         Table.AddColumn(
             AgregarTipoRuta,
@@ -100,7 +114,7 @@ let
             type text
         ),
 
-    // 8. Marcar ciclos directos
+    // 9. Identificar autorreferencias
     AgregarCiclo =
         Table.AddColumn(
             AgregarEvidencia,
@@ -111,31 +125,22 @@ let
             type logical
         ),
 
-    // 9. Identificador de ruta directa
-    AgregarIDRuta =
-        Table.AddColumn(
-            AgregarCiclo,
-            "ID_RUTA",
-            each [ID_OPERACION],
-            Int64.Type
-        ),
-
-    // 10. Ordenar cronológicamente
+    // 10. Orden cronológico
     OrdenarResultados =
         Table.Sort(
-            AgregarIDRuta,
+            AgregarCiclo,
             {
                 {"FECHA_DEBITO", Order.Ascending},
-                {"ID_OPERACION", Order.Ascending}
+                {"ID_REGISTRO_DEBITO", Order.Ascending}
             }
         ),
 
+    // 11. Orden final de columnas
     Resultado =
         Table.ReorderColumns(
             OrdenarResultados,
             {
                 "ID_RUTA",
-                "ID_OPERACION",
                 "ID_REGISTRO_DEBITO",
                 "ID_REGISTRO_CREDITO",
                 "ID_PARTICIPANTE_ORIGEN",
@@ -144,11 +149,17 @@ let
                 "ID_PARTICIPANTE_DESTINO",
                 "IDENTIFICACION_DESTINO",
                 "NOMBRE_DESTINO",
+                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
+                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
                 "FECHA_DEBITO",
                 "FECHA_CREDITO",
                 "MONTO_DEBITO",
                 "MONTO_CREDITO",
                 "DIFERENCIA_SEGUNDOS",
+                "MARCA_TRAMA_EMISOR",
+                "MARCA_TRAMA_BENEFICIARIO",
+                "INST_DEBITO",
+                "TIPO_OPERACION",
                 "NUMERO_SALTO",
                 "TIPO_RUTA",
                 "NIVEL_EVIDENCIA",
