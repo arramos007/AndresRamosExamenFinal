@@ -1,24 +1,24 @@
-REL
-RELAC.
-RUC SOCIAL EMPLEADOR
-RAZON SOCIAL EMPLEADOR
-IDENTIFICACION EMPLEADO (EF)
-IDENT. EMPLEADO (EF) - 2
-NOMBRE EMPLEADO (EF)
-FALL.
-EDAD
-CODIGO MOV.
-CODIGO LIQUID.
-ACTO ADMINIS.
-FECHA DE MOV.
-EN TRAMA EMISOR
-IDENTIFICACION DEL EMISOR / ENDOSANTE
-NOMBRE DEL EMISOR / ENDOSANTE
-EN TRAMA BENEF.
-IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION
-NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION
-NOMBRE MOV.
-TIPO MOV.
-INST.
- MONTO MOV. 
- SALDO NCD 
+qry01_RegistrosOriginales
+
+
+let
+    Origen = qryBase,
+
+    ColumnasOriginales = Table.ColumnNames(Origen),
+
+    ValidarCantidadCampos =
+        if List.Count(ColumnasOriginales) <> 23 then
+            error "La fuente debe contener exactamente 23 campos."
+        else
+            Origen,
+
+    AgregarIdentificador =
+        Table.AddIndexColumn(
+            ValidarCantidadCampos,
+            "ID_REGISTRO_ORIGEN",
+            1,
+            1,
+            Int64.Type
+        )
+in
+    AgregarIdentificador
