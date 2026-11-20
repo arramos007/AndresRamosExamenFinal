@@ -1,229 +1,51 @@
-
 let
-    Origen = qryConciliacionEndosos,
+    Origen = qryPerfilParticipantes,
 
-    // =====================================================
-    // 1. FILTRAR RECEPTORES SIN CARTOLA
-    // =====================================================
-    FiltrarReceptores = Table.SelectRows(
+    FiltrarSalidasExternas = Table.SelectRows(
         Origen,
         each
-            [ESTADO_CONCILIACION] = "SIN_CARTOLA_CONTRAPARTE"
+            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
+            and [ID_TITULAR] <> null
+            and [ID_TITULAR] <> ""
             and [ID_BENEFICIARIO] <> null
-            and Text.Trim(Text.From([ID_BENEFICIARIO])) <> ""
+            and [ID_BENEFICIARIO] <> ""
     ),
 
-    // =====================================================
-    // 2. SELECCIONAR DATOS DE LA OPERACION
-    // =====================================================
     SeleccionarColumnas = Table.SelectColumns(
-        FiltrarReceptores,
+        FiltrarSalidasExternas,
         {
+            "ID_TITULAR",
             "ID_EMISOR",
             "ID_BENEFICIARIO",
-            "NOMBRE_BENEFICIARIO_REGISTRO",
-            "MARCA_TRAMA_BENEFICIARIO",
-            "MONTO_OPERACION",
-            "FECHA_DEBITO",
-            "CODIGO_DEBITO"
+            "FECHA DE MOV.",
+            "CODIGO MOV.",
+            "MONTO MOV.",
+            "CLAVE_MOVIMIENTO"
         }
     ),
 
-    // =====================================================
-    // 3. NORMALIZAR IDENTIFICADORES Y MARCAS
-    // =====================================================
-    NormalizarDatos = Table.TransformColumns(
+    CombinarPerfiles = Table.NestedJoin(
         SeleccionarColumnas,
-        {
-            {
-                "ID_EMISOR",
-                each if _ = null then null else Text.Trim(Text.From(_)),
-                type nullable text
-            },
-            {
-                "ID_BENEFICIARIO",
-                each if _ = null then null else Text.Trim(Text.From(_)),
-                type nullable text
-            },
-            {
-                "MARCA_TRAMA_BENEFICIARIO",
-                each
-                    if _ = null then ""
-                    else Text.Upper(Text.Trim(Text.From(_))),
-                type text
-            }
-        }
+        {"ID_TITULAR"},
+        qryClasificacionParticipantes,
+        {"ID_TITULAR"},
+        "DatosPerfil",
+        JoinKind.LeftOuter
     ),
 
-    // =====================================================
-    // 4. ELIMINAR REPETICIONES DE LA OPERACION
-    // =====================================================
-    OperacionesUnicas = Table.Distinct(
-        NormalizarDatos,
-        {
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "MONTO_OPERACION",
-            "FECHA_DEBITO",
-            "CODIGO_DEBITO"
-        }
+    ExpandirPerfil = Table.ExpandTableColumn(
+        CombinarPerfiles,
+        "DatosPerfil",
+        {"PERFIL_PRELIMINAR"},
+        {"PERFIL_ORIGEN"}
     ),
 
-    // =====================================================
-    // 5. AGRUPAR POR BENEFICIARIO
-    // =====================================================
-    AgruparBeneficiarios = Table.Group(
-        OperacionesUnicas,
-        {"ID_BENEFICIARIO"},
-        {
-            {
-                "NOMBRE_BENEFICIARIO",
-                each
-                    let
-                        Nombres = List.Select(
-                            List.RemoveNulls(
-                                Table.Column(_, "NOMBRE_BENEFICIARIO_REGISTRO")
-                            ),
-                            each Text.Trim(Text.From(_)) <> ""
-                        )
-                    in
-                        if List.IsEmpty(Nombres) then null
-                        else List.First(Nombres),
-                type nullable text
-            },
-            {
-                "TOTAL_RECEPCIONES",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "TOTAL_EMISORES",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_EMISOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "TOTAL_PARTICIPANTES_ORIGEN",
-                each List.Count(
-                    List.Distinct(
-                        List.RemoveNulls(
-                            Table.Column(_, "ID_EMISOR")
-                        )
-                    )
-                ),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL_RECIBIDO",
-                each List.Sum(
-                    List.Transform(
-                        Table.Column(_, "MONTO_OPERACION"),
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "FECHA_PRIMERA_RECEPCION",
-                each List.Min(
-                    List.RemoveNulls(
-                        Table.Column(_, "FECHA_DEBITO")
-                    )
-                ),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMA_RECEPCION",
-                each List.Max(
-                    List.RemoveNulls(
-                        Table.Column(_, "FECHA_DEBITO")
-                    )
-                ),
-                type datetime
-            },
-            {
-                "MARCA_TRAMA_BENEFICIARIO",
-                each
-                    let
-                        Marcas = List.Distinct(
-                            List.Select(
-                                Table.Column(_, "MARCA_TRAMA_BENEFICIARIO"),
-                                each _ <> null and Text.Trim(Text.From(_)) <> ""
-                            )
-                        )
-                    in
-                        if List.Contains(Marcas, "T") then "T"
-                        else "SIN_MARCA_T",
-                type text
-            }
-        }
-    ),
-
-    // =====================================================
-    // 6. IDENTIFICAR MULTIPLICIDAD DE ORIGENES
-    // =====================================================
-    AgregarIndicadorOrigenes = Table.AddColumn(
-        AgruparBeneficiarios,
-        "INDICADOR_ORIGENES",
-        each
-            if [TOTAL_EMISORES] > 1 then
-                "MULTIPLES_EMISORES"
-            else if [TOTAL_EMISORES] = 1 then
-                "UN_SOLO_EMISOR"
-            else
-                "SIN_EMISOR_IDENTIFICADO",
-        type text
-    ),
-
-    // =====================================================
-    // 7. CLASIFICACION PRELIMINAR DEL RECEPTOR
-    // =====================================================
-    AgregarPerfil = Table.AddColumn(
-        AgregarIndicadorOrigenes,
-        "PERFIL_PRELIMINAR",
-        each
-            if [TOTAL_EMISORES] > 1 then
-                "RECEPTOR_CON_MULTIPLES_ORIGENES"
-            else if [TOTAL_EMISORES] = 1 then
-                "RECEPTOR_DE_UN_SOLO_ORIGEN"
-            else
-                "RECEPTOR_INDETERMINADO",
-        type text
-    ),
-
-    // =====================================================
-    // 8. EVIDENCIA POSTERIOR DISPONIBLE
-    // =====================================================
-    AgregarEvidenciaPosterior = Table.AddColumn(
-        AgregarPerfil,
-        "EVIDENCIA_POSTERIOR",
-        each "NO_VERIFICABLE_SIN_CARTOLA",
-        type text
-    ),
-
-    // =====================================================
-    // 9. CLASIFICACION TECNICA
-    // =====================================================
-    AgregarClasificacion = Table.AddColumn(
-        AgregarEvidenciaPosterior,
-        "CLASIFICACION_RECEPTOR",
-        each "RECEPTOR_EXTERNO_SIN_CARTOLA",
-        type text
-    ),
-
-    // =====================================================
-    // 10. ORDENAR POR MONTO RECIBIDO
-    // =====================================================
-    OrdenarPorMonto = Table.Sort(
-        AgregarClasificacion,
-        {
-            {"MONTO_TOTAL_RECIBIDO", Order.Descending}
-        }
+    ClasificarPerfil = Table.ReplaceValue(
+        ExpandirPerfil,
+        null,
+        "SIN_PERFIL_CLASIFICADO",
+        Replacer.ReplaceValue,
+        {"PERFIL_ORIGEN"}
     )
 in
-    OrdenarPorMonto
+    ClasificarPerfil
