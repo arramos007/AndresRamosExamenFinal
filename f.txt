@@ -1,23 +1,23 @@
-qry20_RankingEntidadesReceptoras
+qry21_RankingEntidadesEmisoras
 
 
 let
     Origen = qry17_EndososConRelacionesEmpresariales,
 
-    // 1. Conservar entidades receptoras con RUC de 13 dígitos
+    // 1. Conservar RUC emisores de 13 dígitos
     FiltrarRUC =
         Table.SelectRows(
             Origen,
             each
-                [RUC_EMPRESA_BENEFICIARIO] <> null
+                [RUC_EMPRESA_EMISOR] <> null
                 and Text.Length(
                     Text.Trim(
-                        Text.From([RUC_EMPRESA_BENEFICIARIO])
+                        Text.From([RUC_EMPRESA_EMISOR])
                     )
                 ) = 13
         ),
 
-    // 2. Clasificar por tercer dígito
+    // 2. Clasificar entidad
     AgregarTipoEntidad =
         Table.AddColumn(
             FiltrarRUC,
@@ -27,7 +27,7 @@ let
                     Digito =
                         Text.Middle(
                             Text.Trim(
-                                Text.From([RUC_EMPRESA_BENEFICIARIO])
+                                Text.From([RUC_EMPRESA_EMISOR])
                             ),
                             2,
                             1
@@ -42,7 +42,7 @@ let
             type text
         ),
 
-    // 3. Incluir sociedades privadas y entidades públicas
+    // 3. Incluir sociedades y entidades públicas
     FiltrarEntidades =
         Table.SelectRows(
             AgregarTipoEntidad,
@@ -51,18 +51,18 @@ let
                 or [TIPO_ENTIDAD] = "ENTIDAD_PUBLICA"
         ),
 
-    // 4. Agrupar por entidad receptora
+    // 4. Agrupar por entidad emisora
     AgruparEntidades =
         Table.Group(
             FiltrarEntidades,
             {
-                "RUC_EMPRESA_BENEFICIARIO",
-                "RAZON_SOCIAL_BENEFICIARIO",
+                "RUC_EMPRESA_EMISOR",
+                "RAZON_SOCIAL_EMISOR",
                 "TIPO_ENTIDAD"
             },
             {
                 {
-                    "CANTIDAD_ENDOSOS_RECIBIDOS",
+                    "CANTIDAD_ENDOSOS_REALIZADOS",
                     each
                         List.Count(
                             List.Distinct(
@@ -74,7 +74,7 @@ let
                     Int64.Type
                 },
                 {
-                    "IMPORTE_REFERENCIAL_RECIBIDO",
+                    "IMPORTE_REFERENCIAL_REALIZADO",
                     each
                         let
                             Operaciones =
@@ -97,38 +97,38 @@ let
                     type number
                 },
                 {
-                    "CANTIDAD_EMPRESAS_EMISORAS",
+                    "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
                     each
                         List.Count(
                             List.Distinct(
                                 List.RemoveNulls(
-                                    [RUC_EMPRESA_EMISOR]
+                                    [RUC_EMPRESA_BENEFICIARIO]
                                 )
                             )
                         ),
                     Int64.Type
                 },
                 {
-                    "CANTIDAD_PARTICIPANTES_EMISORES",
+                    "CANTIDAD_PARTICIPANTES_BENEFICIARIOS",
                     each
                         List.Count(
                             List.Distinct(
                                 List.RemoveNulls(
-                                    [ID_PARTICIPANTE_EMISOR_CARTOLA]
+                                    [ID_PARTICIPANTE_BENEFICIARIO_CARTOLA]
                                 )
                             )
                         ),
                     Int64.Type
                 },
                 {
-                    "PRIMERA_FECHA_RECEPCION",
+                    "PRIMERA_FECHA_EMISION",
                     each List.Min(
                         List.RemoveNulls([FECHA_DEBITO])
                     ),
                     type nullable datetime
                 },
                 {
-                    "ULTIMA_FECHA_RECEPCION",
+                    "ULTIMA_FECHA_EMISION",
                     each List.Max(
                         List.RemoveNulls([FECHA_DEBITO])
                     ),
@@ -137,17 +137,17 @@ let
             }
         ),
 
-    // 5. Ordenar por importe referencial
+    // 5. Ordenar ranking
     OrdenarRanking =
         Table.Sort(
             AgruparEntidades,
             {
-                {"IMPORTE_REFERENCIAL_RECIBIDO", Order.Descending},
-                {"CANTIDAD_ENDOSOS_RECIBIDOS", Order.Descending}
+                {"IMPORTE_REFERENCIAL_REALIZADO", Order.Descending},
+                {"CANTIDAD_ENDOSOS_REALIZADOS", Order.Descending}
             }
         ),
 
-    // 6. Agregar posición del ranking
+    // 6. Posición
     AgregarRanking =
         Table.AddIndexColumn(
             OrdenarRanking,
@@ -162,15 +162,15 @@ let
             AgregarRanking,
             {
                 "POSICION_RANKING",
-                "RUC_EMPRESA_BENEFICIARIO",
-                "RAZON_SOCIAL_BENEFICIARIO",
+                "RUC_EMPRESA_EMISOR",
+                "RAZON_SOCIAL_EMISOR",
                 "TIPO_ENTIDAD",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "IMPORTE_REFERENCIAL_RECIBIDO",
-                "CANTIDAD_EMPRESAS_EMISORAS",
-                "CANTIDAD_PARTICIPANTES_EMISORES",
-                "PRIMERA_FECHA_RECEPCION",
-                "ULTIMA_FECHA_RECEPCION"
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "IMPORTE_REFERENCIAL_REALIZADO",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+                "CANTIDAD_PARTICIPANTES_BENEFICIARIOS",
+                "PRIMERA_FECHA_EMISION",
+                "ULTIMA_FECHA_EMISION"
             }
         )
 in
