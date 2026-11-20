@@ -1,207 +1,24 @@
-
-let
-    Origen = qryPerfilParticipantes,
-
-    // =====================================================
-    // 1. SALIDAS EXTERNAS: RECEPTORES
-    // =====================================================
-    FiltrarSalidasExternas = Table.SelectRows(
-        Origen,
-        each
-            [TIPO_MOVIMIENTO_RED] = "SALIDA_A_EXTERNO"
-            and [ID_TITULAR] <> null
-            and [ID_TITULAR] <> ""
-            and [ID_BENEFICIARIO] <> null
-            and [ID_BENEFICIARIO] <> ""
-            and [#"FECHA DE MOV."] <> null
-    ),
-
-    SeleccionarColumnas = Table.SelectColumns(
-        FiltrarSalidasExternas,
-        {
-            "ID_TITULAR",
-            "ID_EMISOR",
-            "ID_BENEFICIARIO",
-            "FECHA DE MOV.",
-            "CODIGO MOV.",
-            "MONTO MOV.",
-            "CLAVE_MOVIMIENTO"
-        }
-    ),
-
-    SalidasUnicas = Table.Distinct(
-        SeleccionarColumnas,
-        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
-    ),
-
-    // =====================================================
-    // 2. OBTENER SALIDAS DE TODOS LOS TITULARES
-    // =====================================================
-    FiltrarSalidas = Table.SelectRows(
-        Origen,
-        each
-            List.Contains(
-                {
-                    "SALIDA_A_EXTERNO",
-                    "SALIDA_A_PARTICIPANTE"
-                },
-                [TIPO_MOVIMIENTO_RED]
-            )
-            and [ID_TITULAR] <> null
-            and [ID_TITULAR] <> ""
-            and [#"FECHA DE MOV."] <> null
-    ),
-
-    SeleccionarSalidas = Table.SelectColumns(
-        FiltrarSalidas,
-        {
-            "ID_TITULAR",
-            "FECHA DE MOV.",
-            "MONTO MOV.",
-            "TIPO_MOVIMIENTO_RED",
-            "ID_BENEFICIARIO",
-            "CLAVE_MOVIMIENTO"
-        }
-    ),
-
-    SalidasUnicasParticipantes = Table.Distinct(
-        SeleccionarSalidas,
-        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
-    ),
-
-    // =====================================================
-    // 3. AGRUPAR SALIDAS POR TITULAR
-    // =====================================================
-    AgruparSalidas = Table.Group(
-        SalidasUnicasParticipantes,
-        {"ID_TITULAR"},
-        {
-            {
-                "FECHA_PRIMERA_SALIDA",
-                each List.Min([#"FECHA DE MOV."]),
-                type datetime
-            },
-            {
-                "FECHA_ULTIMA_SALIDA",
-                each List.Max([#"FECHA DE MOV."]),
-                type datetime
-            },
-            {
-                "TOTAL_SALIDAS_REGISTRADAS",
-                each Table.RowCount(_),
-                Int64.Type
-            },
-            {
-                "MONTO_TOTAL_SALIDAS",
-                each List.Sum(
-                    List.Transform(
-                        [#"MONTO MOV."],
-                        each try Number.From(_) otherwise 0
-                    )
-                ),
-                type number
-            },
-            {
-                "TOTAL_DESTINATARIOS",
-                each List.Count(
-                    List.Distinct(
-                        List.Select(
-                            [ID_BENEFICIARIO],
-                            each _ <> null and Text.Trim(Text.From(_)) <> ""
-                        )
-                    )
-                ),
-                Int64.Type
-            }
-        }
-    ),
-
-    // =====================================================
-    // 4. CRUZAR RECEPTORES CON TITULARES QUE TIENEN SALIDAS
-    // =====================================================
-    CombinarSalidas = Table.NestedJoin(
-        SalidasUnicas,
-        {"ID_BENEFICIARIO"},
-        AgruparSalidas,
-        {"ID_TITULAR"},
-        "SALIDAS_RECEPTOR",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirSalidas = Table.ExpandTableColumn(
-        CombinarSalidas,
-        "SALIDAS_RECEPTOR",
-        {
-            "FECHA_PRIMERA_SALIDA",
-            "FECHA_ULTIMA_SALIDA",
-            "TOTAL_SALIDAS_REGISTRADAS",
-            "MONTO_TOTAL_SALIDAS",
-            "TOTAL_DESTINATARIOS"
-        },
-        {
-            "FECHA_PRIMERA_SALIDA",
-            "FECHA_ULTIMA_SALIDA",
-            "TOTAL_SALIDAS_REGISTRADAS",
-            "MONTO_TOTAL_SALIDAS",
-            "TOTAL_DESTINATARIOS"
-        }
-    ),
-
-    // =====================================================
-    // 5. IDENTIFICAR ACTIVIDAD POSTERIOR
-    // =====================================================
-    AgregarEvidencia = Table.AddColumn(
-        ExpandirSalidas,
-        "EVIDENCIA_POSTERIOR",
-        each
-            if [FECHA_ULTIMA_SALIDA] = null then
-                "SIN_SALIDAS_IDENTIFICADAS"
-            else if [FECHA_ULTIMA_SALIDA] > [#"FECHA DE MOV."] then
-                "CON_ACTIVIDAD_POSTERIOR"
-            else
-                "SIN_SALIDA_POSTERIOR_IDENTIFICADA",
-        type text
-    ),
-
-    // =====================================================
-    // 6. PERFIL DEL RECEPTOR
-    // =====================================================
-    AgregarPerfilReceptor = Table.AddColumn(
-        AgregarEvidencia,
-        "PERFIL_RECEPTOR",
-        each
-            if [EVIDENCIA_POSTERIOR] = "CON_ACTIVIDAD_POSTERIOR" then
-                "POSIBLE_INTERMEDIARIO_O_REDISTRIBUIDOR"
-            else
-                "SIN_EVIDENCIA_POSTERIOR_EN_CARTOLAS_DISPONIBLES",
-        type text
-    ),
-
-    // =====================================================
-    // 7. INCORPORAR PERFIL DEL EMISOR ORIGINAL
-    // =====================================================
-    CombinarPerfiles = Table.NestedJoin(
-        AgregarPerfilReceptor,
-        {"ID_TITULAR"},
-        qryClasificacionParticipantes,
-        {"ID_TITULAR"},
-        "DatosPerfil",
-        JoinKind.LeftOuter
-    ),
-
-    ExpandirPerfil = Table.ExpandTableColumn(
-        CombinarPerfiles,
-        "DatosPerfil",
-        {"PERFIL_PRELIMINAR", "PERFIL_ANALITICO"},
-        {"PERFIL_ORIGEN", "PERFIL_ANALITICO_ORIGEN"}
-    ),
-
-    ClasificarPerfil = Table.ReplaceValue(
-        ExpandirPerfil,
-        null,
-        "SIN_PERFIL_CLASIFICADO",
-        Replacer.ReplaceValue,
-        {"PERFIL_ORIGEN", "PERFIL_ANALITICO_ORIGEN"}
-    )
-in
-    ClasificarPerfil
+REL
+RELAC.
+RUC SOCIAL EMPLEADOR
+RAZON SOCIAL EMPLEADOR
+IDENTIFICACION EMPLEADO (EF)
+IDENT. EMPLEADO (EF) - 2
+NOMBRE EMPLEADO (EF)
+FALL.
+EDAD
+CODIGO MOV.
+CODIGO LIQUID.
+ACTO ADMINIS.
+FECHA DE MOV.
+EN TRAMA EMISOR
+IDENTIFICACION DEL EMISOR / ENDOSANTE
+NOMBRE DEL EMISOR / ENDOSANTE
+EN TRAMA BENEF.
+IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION
+NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION
+NOMBRE MOV.
+TIPO MOV.
+INST.
+ MONTO MOV. 
+ SALDO NCD 
