@@ -1,117 +1,132 @@
+qry15_EndososConciliados
+
 
 let
+    // 1. Seleccionar conciliaciones confirmadas
     Origen = qry13_ConciliacionEndosos,
 
-    AgruparEstados =
-        Table.Group(
+    FiltrarConciliados =
+        Table.SelectRows(
             Origen,
-            {"ESTADO_CONCILIACION"},
+            each [ESTADO_CONCILIACION] = "CONCILIADO"
+        ),
+
+    SeleccionarConciliaciones =
+        Table.SelectColumns(
+            FiltrarConciliados,
             {
-                {
-                    "CANTIDAD_FILAS",
-                    each Table.RowCount(_),
-                    Int64.Type
-                },
-                {
-                    "DEBITOS_DISTINTOS",
-                    each
-                        Table.RowCount(
-                            Table.Distinct(
-                                Table.SelectRows(
-                                    Table.SelectColumns(
-                                        _,
-                                        {
-                                            "ID_REGISTRO_DEBITO"
-                                        }
-                                    ),
-                                    each [ID_REGISTRO_DEBITO] <> null
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "CREDITOS_DISTINTOS",
-                    each
-                        Table.RowCount(
-                            Table.Distinct(
-                                Table.SelectRows(
-                                    Table.SelectColumns(
-                                        _,
-                                        {
-                                            "ID_REGISTRO_CREDITO"
-                                        }
-                                    ),
-                                    each [ID_REGISTRO_CREDITO] <> null
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "IMPORTE_DEBITOS",
-                    each
-                        let
-                            Registros =
-                                Table.Distinct(
-                                    Table.SelectRows(
-                                        Table.SelectColumns(
-                                            _,
-                                            {
-                                                "ID_REGISTRO_DEBITO",
-                                                "MONTO_DEBITO"
-                                            }
-                                        ),
-                                        each
-                                            [ID_REGISTRO_DEBITO] <> null
-                                    ),
-                                    {"ID_REGISTRO_DEBITO"}
-                                )
-                        in
-                            if Table.IsEmpty(Registros) then
-                                null
-                            else
-                                List.Sum(
-                                    Registros[MONTO_DEBITO]
-                                ),
-                    type nullable number
-                },
-                {
-                    "IMPORTE_CREDITOS",
-                    each
-                        let
-                            Registros =
-                                Table.Distinct(
-                                    Table.SelectRows(
-                                        Table.SelectColumns(
-                                            _,
-                                            {
-                                                "ID_REGISTRO_CREDITO",
-                                                "MONTO_CREDITO"
-                                            }
-                                        ),
-                                        each
-                                            [ID_REGISTRO_CREDITO] <> null
-                                    ),
-                                    {"ID_REGISTRO_CREDITO"}
-                                )
-                        in
-                            if Table.IsEmpty(Registros) then
-                                null
-                            else
-                                List.Sum(
-                                    Registros[MONTO_CREDITO]
-                                ),
-                    type nullable number
-                }
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO",
+                "DIFERENCIA_SEGUNDOS"
             }
         ),
 
+    // 2. Recuperar información completa del débito
+    UnirDebitos =
+        Table.NestedJoin(
+            SeleccionarConciliaciones,
+            {"ID_REGISTRO_DEBITO"},
+            qry08_EndososDebito,
+            {"ID_REGISTRO_ORIGEN"},
+            "DATOS_DEBITO",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirDebitos =
+        Table.ExpandTableColumn(
+            UnirDebitos,
+            "DATOS_DEBITO",
+            {
+                "ID_PARTICIPANTE_TITULAR",
+                "ID_PARTICIPANTE_EMISOR",
+                "ID_PARTICIPANTE_BENEFICIARIO",
+                "IDENTIFICACION EMPLEADO (EF)",
+                "NOMBRE EMPLEADO (EF)",
+                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+                "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+                "CODIGO MOV.",
+                "CODIGO LIQUID.",
+                "INST.",
+                "SALDO NCD",
+                "EN TRAMA EMISOR",
+                "EN TRAMA BENEF."
+            },
+            {
+                "ID_PARTICIPANTE_EMISOR_CARTOLA",
+                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
+                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
+                "IDENTIFICACION_EMISOR",
+                "NOMBRE_EMISOR",
+                "IDENTIFICACION_BENEFICIARIO",
+                "NOMBRE_BENEFICIARIO",
+                "CODIGO_MOV_DEBITO",
+                "CODIGO_LIQUID_DEBITO",
+                "INST_DEBITO",
+                "SALDO_POSTERIOR_DEBITO",
+                "MARCA_TRAMA_EMISOR",
+                "MARCA_TRAMA_BENEFICIARIO"
+            }
+        ),
+
+    // 3. Recuperar información completa del crédito
+    UnirCreditos =
+        Table.NestedJoin(
+            ExpandirDebitos,
+            {"ID_REGISTRO_CREDITO"},
+            qry09_EndososCredito,
+            {"ID_REGISTRO_ORIGEN"},
+            "DATOS_CREDITO",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirCreditos =
+        Table.ExpandTableColumn(
+            UnirCreditos,
+            "DATOS_CREDITO",
+            {
+                "ID_PARTICIPANTE_TITULAR",
+                "IDENTIFICACION EMPLEADO (EF)",
+                "NOMBRE EMPLEADO (EF)",
+                "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+                "NOMBRE DEL EMISOR / ENDOSANTE",
+                "CODIGO MOV.",
+                "CODIGO LIQUID.",
+                "INST.",
+                "SALDO NCD"
+            },
+            {
+                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
+                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
+                "NOMBRE_BENEFICIARIO_CARTOLA",
+                "IDENTIFICACION_EMISOR_CREDITO",
+                "NOMBRE_EMISOR_CREDITO",
+                "CODIGO_MOV_CREDITO",
+                "CODIGO_LIQUID_CREDITO",
+                "INST_CREDITO",
+                "SALDO_POSTERIOR_CREDITO"
+            }
+        ),
+
+    // 4. Identificar la operación económica
+    AgregarTipoOperacion =
+        Table.AddColumn(
+            ExpandirCreditos,
+            "TIPO_OPERACION",
+            each "ENDOSO_CONCILIADO",
+            type text
+        ),
+
+    // 5. Ordenar resultados
     Resultado =
         Table.Sort(
-            AgruparEstados,
+            AgregarTipoOperacion,
             {
-                {"ESTADO_CONCILIACION", Order.Ascending}
+                {"FECHA_DEBITO", Order.Ascending},
+                {"ID_REGISTRO_DEBITO", Order.Ascending}
             }
         )
 in
