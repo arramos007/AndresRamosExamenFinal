@@ -1,174 +1,224 @@
-qry21_RankingEntidadesEmisoras
+qry22_ComparacionEntidades
 
 
 let
-    Origen = qry17_EndososConRelacionesEmpresariales,
+    // 1. Obtener los dos rankings
+    Receptoras = qry20_RankingEntidadesReceptoras,
+    Emisoras = qry21_RankingEntidadesEmisoras,
 
-    // 1. Conservar RUC emisores de 13 dígitos
-    FiltrarRUC =
-        Table.SelectRows(
-            Origen,
-            each
-                [RUC_EMPRESA_EMISOR] <> null
-                and Text.Length(
-                    Text.Trim(
-                        Text.From([RUC_EMPRESA_EMISOR])
-                    )
-                ) = 13
-        ),
-
-    // 2. Clasificar entidad
-    AgregarTipoEntidad =
-        Table.AddColumn(
-            FiltrarRUC,
-            "TIPO_ENTIDAD",
-            each
-                let
-                    Digito =
-                        Text.Middle(
-                            Text.Trim(
-                                Text.From([RUC_EMPRESA_EMISOR])
-                            ),
-                            2,
-                            1
-                        )
-                in
-                    if Digito = "9" then
-                        "SOCIEDAD_PRIVADA"
-                    else if Digito = "6" then
-                        "ENTIDAD_PUBLICA"
-                    else
-                        "PERSONA_NATURAL",
-            type text
-        ),
-
-    // 3. Incluir sociedades y entidades públicas
-    FiltrarEntidades =
-        Table.SelectRows(
-            AgregarTipoEntidad,
-            each
-                [TIPO_ENTIDAD] = "SOCIEDAD_PRIVADA"
-                or [TIPO_ENTIDAD] = "ENTIDAD_PUBLICA"
-        ),
-
-    // 4. Agrupar por entidad emisora
-    AgruparEntidades =
-        Table.Group(
-            FiltrarEntidades,
+    // 2. Construir universo completo de RUC
+    RUCReceptoras =
+        Table.RenameColumns(
+            Table.SelectColumns(
+                Receptoras,
+                {"RUC_EMPRESA_BENEFICIARIO"}
+            ),
             {
-                "RUC_EMPRESA_EMISOR",
-                "RAZON_SOCIAL_EMISOR",
-                "TIPO_ENTIDAD"
+                {"RUC_EMPRESA_BENEFICIARIO", "RUC_ENTIDAD"}
+            }
+        ),
+
+    RUCEmisoras =
+        Table.RenameColumns(
+            Table.SelectColumns(
+                Emisoras,
+                {"RUC_EMPRESA_EMISOR"}
+            ),
+            {
+                {"RUC_EMPRESA_EMISOR", "RUC_ENTIDAD"}
+            }
+        ),
+
+    UniversoRUC =
+        Table.Distinct(
+            Table.Combine(
+                {
+                    RUCReceptoras,
+                    RUCEmisoras
+                }
+            )
+        ),
+
+    // 3. Incorporar información de receptoras
+    UnirReceptoras =
+        Table.NestedJoin(
+            UniversoRUC,
+            {"RUC_ENTIDAD"},
+            Receptoras,
+            {"RUC_EMPRESA_BENEFICIARIO"},
+            "DATOS_RECEPCION",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirReceptoras =
+        Table.ExpandTableColumn(
+            UnirReceptoras,
+            "DATOS_RECEPCION",
+            {
+                "RAZON_SOCIAL_BENEFICIARIO",
+                "TIPO_ENTIDAD",
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "IMPORTE_REFERENCIAL_RECIBIDO",
+                "CANTIDAD_EMPRESAS_EMISORAS",
+                "PRIMERA_FECHA_RECEPCION",
+                "ULTIMA_FECHA_RECEPCION"
             },
             {
-                {
-                    "CANTIDAD_ENDOSOS_REALIZADOS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_OPERACION]
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "IMPORTE_REFERENCIAL_REALIZADO",
-                    each
-                        let
-                            Operaciones =
-                                Table.Distinct(
-                                    Table.SelectColumns(
-                                        _,
-                                        {
-                                            "ID_OPERACION",
-                                            "MONTO_DEBITO"
-                                        }
-                                    ),
-                                    {"ID_OPERACION"}
-                                )
-                        in
-                            List.Sum(
-                                List.RemoveNulls(
-                                    Operaciones[MONTO_DEBITO]
-                                )
-                            ),
-                    type number
-                },
-                {
-                    "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [RUC_EMPRESA_BENEFICIARIO]
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "CANTIDAD_PARTICIPANTES_BENEFICIARIOS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_PARTICIPANTE_BENEFICIARIO_CARTOLA]
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "PRIMERA_FECHA_EMISION",
-                    each List.Min(
-                        List.RemoveNulls([FECHA_DEBITO])
-                    ),
-                    type nullable datetime
-                },
-                {
-                    "ULTIMA_FECHA_EMISION",
-                    each List.Max(
-                        List.RemoveNulls([FECHA_DEBITO])
-                    ),
-                    type nullable datetime
-                }
+                "RAZON_SOCIAL_RECEPTORA",
+                "TIPO_ENTIDAD_RECEPTORA",
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+                "PRIMERA_FECHA_RECEPCION",
+                "ULTIMA_FECHA_RECEPCION"
             }
         ),
 
-    // 5. Ordenar ranking
-    OrdenarRanking =
-        Table.Sort(
-            AgruparEntidades,
-            {
-                {"IMPORTE_REFERENCIAL_REALIZADO", Order.Descending},
-                {"CANTIDAD_ENDOSOS_REALIZADOS", Order.Descending}
-            }
+    // 4. Incorporar información de emisoras
+    UnirEmisoras =
+        Table.NestedJoin(
+            ExpandirReceptoras,
+            {"RUC_ENTIDAD"},
+            Emisoras,
+            {"RUC_EMPRESA_EMISOR"},
+            "DATOS_EMISION",
+            JoinKind.LeftOuter
         ),
 
-    // 6. Posición
-    AgregarRanking =
-        Table.AddIndexColumn(
-            OrdenarRanking,
-            "POSICION_RANKING",
-            1,
-            1,
-            Int64.Type
-        ),
-
-    Resultado =
-        Table.ReorderColumns(
-            AgregarRanking,
+    ExpandirEmisoras =
+        Table.ExpandTableColumn(
+            UnirEmisoras,
+            "DATOS_EMISION",
             {
-                "POSICION_RANKING",
-                "RUC_EMPRESA_EMISOR",
                 "RAZON_SOCIAL_EMISOR",
                 "TIPO_ENTIDAD",
                 "CANTIDAD_ENDOSOS_REALIZADOS",
                 "IMPORTE_REFERENCIAL_REALIZADO",
                 "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "CANTIDAD_PARTICIPANTES_BENEFICIARIOS",
+                "PRIMERA_FECHA_EMISION",
+                "ULTIMA_FECHA_EMISION"
+            },
+            {
+                "RAZON_SOCIAL_EMISORA",
+                "TIPO_ENTIDAD_EMISORA",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+                "PRIMERA_FECHA_EMISION",
+                "ULTIMA_FECHA_EMISION"
+            }
+        ),
+
+    // 5. Consolidar razón social y tipo de entidad
+    AgregarRazonSocial =
+        Table.AddColumn(
+            ExpandirEmisoras,
+            "RAZON_SOCIAL",
+            each
+                if [RAZON_SOCIAL_RECEPTORA] <> null then
+                    [RAZON_SOCIAL_RECEPTORA]
+                else
+                    [RAZON_SOCIAL_EMISORA],
+            type nullable text
+        ),
+
+    AgregarTipoEntidad =
+        Table.AddColumn(
+            AgregarRazonSocial,
+            "TIPO_ENTIDAD",
+            each
+                if [TIPO_ENTIDAD_RECEPTORA] <> null then
+                    [TIPO_ENTIDAD_RECEPTORA]
+                else
+                    [TIPO_ENTIDAD_EMISORA],
+            type nullable text
+        ),
+
+    // 6. Reemplazar ausencias de actividad por cero
+    ReemplazarNulos =
+        Table.ReplaceValue(
+            AgregarTipoEntidad,
+            null,
+            0,
+            Replacer.ReplaceValue,
+            {
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS"
+            }
+        ),
+
+    // 7. Calcular diferencia entre entradas y salidas
+    AgregarDiferencia =
+        Table.AddColumn(
+            ReemplazarNulos,
+            "DIFERENCIA_RECIBIDO_REALIZADO",
+            each [TOTAL_RECIBIDO] - [TOTAL_REALIZADO],
+            type number
+        ),
+
+    // 8. Calcular ratio de salida sobre entrada
+    AgregarRatio =
+        Table.AddColumn(
+            AgregarDiferencia,
+            "RATIO_SALIDA_ENTRADA",
+            each
+                if [TOTAL_RECIBIDO] = 0 then
+                    null
+                else
+                    [TOTAL_REALIZADO] / [TOTAL_RECIBIDO],
+            type nullable number
+        ),
+
+    // 9. Clasificar presencia de movimientos
+    AgregarPerfilMovimiento =
+        Table.AddColumn(
+            AgregarRatio,
+            "PRESENCIA_MOVIMIENTOS",
+            each
+                if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0
+                    and [CANTIDAD_ENDOSOS_REALIZADOS] > 0 then
+                    "RECIBE_Y_REALIZA"
+
+                else if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0 then
+                    "SOLO_RECIBE"
+
+                else
+                    "SOLO_REALIZA",
+            type text
+        ),
+
+    // 10. Ordenar por volumen recibido y realizado
+    OrdenarResultado =
+        Table.Sort(
+            AgregarPerfilMovimiento,
+            {
+                {"TOTAL_RECIBIDO", Order.Descending},
+                {"TOTAL_REALIZADO", Order.Descending}
+            }
+        ),
+
+    Resultado =
+        Table.ReorderColumns(
+            OrdenarResultado,
+            {
+                "RUC_ENTIDAD",
+                "RAZON_SOCIAL",
+                "TIPO_ENTIDAD",
+                "PRESENCIA_MOVIMIENTOS",
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+                "DIFERENCIA_RECIBIDO_REALIZADO",
+                "RATIO_SALIDA_ENTRADA",
+                "PRIMERA_FECHA_RECEPCION",
+                "ULTIMA_FECHA_RECEPCION",
                 "PRIMERA_FECHA_EMISION",
                 "ULTIMA_FECHA_EMISION"
             }
