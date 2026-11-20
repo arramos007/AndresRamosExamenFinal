@@ -1,99 +1,66 @@
-qry04_RelacionesEmpresariales
+qry05_MovimientosEconomicos
 
 
 let
     Origen = qry01_RegistrosOriginales,
 
-    SeleccionarColumnas =
-        Table.SelectColumns(
+    AgregarClasificacion =
+        Table.AddColumn(
             Origen,
-            {
-                "IDENTIFICACION EMPLEADO (EF)",
-                "RUC SOCIAL EMPLEADOR",
-                "REL",
-                "RELAC."
-            }
-        ),
+            "CLASIFICACION_MOVIMIENTO",
+            each
+                let
+                    NombreMovimiento =
+                        if [#"NOMBRE MOV."] = null then
+                            ""
+                        else
+                            Text.Upper(
+                                Text.Trim(
+                                    Text.From([#"NOMBRE MOV."])
+                                )
+                            ),
 
-    RelacionesUnicas =
-        Table.Distinct(
-            SeleccionarColumnas
-        ),
+                    TipoMovimiento =
+                        if [#"TIPO MOV."] = null then
+                            ""
+                        else
+                            Text.Upper(
+                                Text.Trim(
+                                    Text.From([#"TIPO MOV."])
+                                )
+                            )
+                in
+                    if NombreMovimiento = "EMISION"
+                        and TipoMovimiento = "CRE" then
+                        "ACREDITACION_SRI"
 
-    UnirParticipantes =
-        Table.NestedJoin(
-            RelacionesUnicas,
-            {"IDENTIFICACION EMPLEADO (EF)"},
-            qry02_Participantes,
-            {"IDENTIFICACION_PARTICIPANTE"},
-            "PARTICIPANTE",
-            JoinKind.LeftOuter
-        ),
+                    else if NombreMovimiento = "ENDOSO"
+                        and TipoMovimiento = "CRE" then
+                        "ENDOSO_RECIBIDO"
 
-    ExpandirParticipantes =
-        Table.ExpandTableColumn(
-            UnirParticipantes,
-            "PARTICIPANTE",
-            {"ID_PARTICIPANTE"},
-            {"ID_PARTICIPANTE"}
-        ),
+                    else if NombreMovimiento = "ENDOSO"
+                        and TipoMovimiento = "DEB" then
+                        "ENDOSO_REALIZADO"
 
-    UnirEmpresas =
-        Table.NestedJoin(
-            ExpandirParticipantes,
-            {"RUC SOCIAL EMPLEADOR"},
-            qry03_Empresas,
-            {"RUC_EMPRESA"},
-            "EMPRESA",
-            JoinKind.LeftOuter
-        ),
+                    else if NombreMovimiento = "UTILIZACION" then
+                        "UTILIZACION"
 
-    ExpandirEmpresas =
-        Table.ExpandTableColumn(
-            UnirEmpresas,
-            "EMPRESA",
-            {"ID_EMPRESA"},
-            {"ID_EMPRESA"}
-        ),
-
-    RenombrarColumnas =
-        Table.RenameColumns(
-            ExpandirEmpresas,
-            {
-                {"REL", "TIPO_RELACION"},
-                {"RELAC.", "RELACIONES_EMPLEADO"}
-            }
-        ),
-
-    OrdenarRelaciones =
-        Table.Sort(
-            RenombrarColumnas,
-            {
-                {"ID_PARTICIPANTE", Order.Ascending},
-                {"ID_EMPRESA", Order.Ascending},
-                {"TIPO_RELACION", Order.Ascending}
-            }
-        ),
-
-    AgregarIdentificador =
-        Table.AddIndexColumn(
-            OrdenarRelaciones,
-            "ID_RELACION",
-            1,
-            1,
-            Int64.Type
+                    else
+                        "OTRO_MOVIMIENTO_NO_CLASIFICADO",
+            type text
         ),
 
     Resultado =
         Table.ReorderColumns(
-            AgregarIdentificador,
-            {
-                "ID_RELACION",
-                "ID_PARTICIPANTE",
-                "ID_EMPRESA",
-                "TIPO_RELACION",
-                "RELACIONES_EMPLEADO"
-            }
+            AgregarClasificacion,
+            {"ID_REGISTRO_ORIGEN", "CLASIFICACION_MOVIMIENTO"}
+                & List.RemoveItems(
+                    Table.ColumnNames(AgregarClasificacion),
+                    {
+                        "ID_REGISTRO_ORIGEN",
+                        "CLASIFICACION_MOVIMIENTO"
+                    }
+                )
         )
 in
     Resultado
