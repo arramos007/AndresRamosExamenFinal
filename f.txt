@@ -1,6 +1,10 @@
+
 let
     Origen = qryPerfilParticipantes,
 
+    // =====================================================
+    // 1. IDENTIFICAR SALIDAS EXTERNAS
+    // =====================================================
     FiltrarSalidasExternas = Table.SelectRows(
         Origen,
         each
@@ -9,6 +13,7 @@ let
             and [ID_TITULAR] <> ""
             and [ID_BENEFICIARIO] <> null
             and [ID_BENEFICIARIO] <> ""
+            and [#"FECHA DE MOV."] <> null
     ),
 
     SeleccionarColumnas = Table.SelectColumns(
@@ -24,8 +29,179 @@ let
         }
     ),
 
-    CombinarPerfiles = Table.NestedJoin(
+    // =====================================================
+    // 2. ELIMINAR REPETICIONES ADMINISTRATIVAS
+    // =====================================================
+    SalidasUnicas = Table.Distinct(
         SeleccionarColumnas,
+        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
+    ),
+
+    // =====================================================
+    // 3. OBTENER TODAS LAS SALIDAS DE PARTICIPANTES
+    // =====================================================
+    FiltrarSalidasPosteriores = Table.SelectRows(
+        Origen,
+        each
+            List.Contains(
+                {
+                    "SALIDA_A_EXTERNO",
+                    "SALIDA_A_PARTICIPANTE"
+                },
+                [TIPO_MOVIMIENTO_RED]
+            )
+            and [ID_TITULAR] <> null
+            and [ID_TITULAR] <> ""
+            and [#"FECHA DE MOV."] <> null
+    ),
+
+    SeleccionarSalidasPosteriores = Table.SelectColumns(
+        FiltrarSalidasPosteriores,
+        {
+            "ID_TITULAR",
+            "ID_BENEFICIARIO",
+            "FECHA DE MOV.",
+            "MONTO MOV.",
+            "TIPO_MOVIMIENTO_RED",
+            "CLAVE_MOVIMIENTO"
+        }
+    ),
+
+    SalidasPosterioresUnicas = Table.Distinct(
+        SeleccionarSalidasPosteriores,
+        {"ID_TITULAR", "CLAVE_MOVIMIENTO"}
+    ),
+
+    // =====================================================
+    // 4. BUSCAR AL RECEPTOR COMO TITULAR DE OTRA CARTOLA
+    // =====================================================
+    BuscarMovimientosReceptor = Table.NestedJoin(
+        SalidasUnicas,
+        {"ID_BENEFICIARIO"},
+        SalidasPosterioresUnicas,
+        {"ID_TITULAR"},
+        "MOVIMIENTOS_RECEPTOR",
+        JoinKind.LeftOuter
+    ),
+
+    // =====================================================
+    // 5. CONSERVAR SOLO SALIDAS POSTERIORES A LA RECEPCION
+    // =====================================================
+    FiltrarMovimientosPosteriores = Table.AddColumn(
+        BuscarMovimientosReceptor,
+        "SALIDAS_POSTERIORES",
+        each
+            let
+                FechaRecepcion = [#"FECHA DE MOV."],
+                Movimientos = [MOVIMIENTOS_RECEPTOR]
+            in
+                Table.SelectRows(
+                    Movimientos,
+                    (r) => r[#"FECHA DE MOV."] > FechaRecepcion
+                ),
+        type table
+    ),
+
+    // =====================================================
+    // 6. CONTAR SALIDAS POSTERIORES
+    // =====================================================
+    AgregarTotalSalidasPosteriores = Table.AddColumn(
+        FiltrarMovimientosPosteriores,
+        "TOTAL_SALIDAS_POSTERIORES",
+        each Table.RowCount([SALIDAS_POSTERIORES]),
+        Int64.Type
+    ),
+
+    // =====================================================
+    // 7. CALCULAR IMPORTE REDISTRIBUIDO
+    // =====================================================
+    AgregarMontoRedistribuido = Table.AddColumn(
+        AgregarTotalSalidasPosteriores,
+        "MONTO_TOTAL_REDISTRIBUIDO",
+        each
+            List.Sum(
+                List.Transform(
+                    Table.Column(
+                        [SALIDAS_POSTERIORES],
+                        "MONTO MOV."
+                    ),
+                    each try Number.From(_) otherwise 0
+                )
+            ),
+        type number
+    ),
+
+    // =====================================================
+    // 8. CONTAR DESTINATARIOS POSTERIORES DISTINTOS
+    // =====================================================
+    AgregarDestinatariosPosteriores = Table.AddColumn(
+        AgregarMontoRedistribuido,
+        "TOTAL_DESTINATARIOS_POSTERIORES",
+        each
+            List.Count(
+                List.Distinct(
+                    List.Select(
+                        Table.Column(
+                            [SALIDAS_POSTERIORES],
+                            "ID_BENEFICIARIO"
+                        ),
+                        each _ <> null and Text.Trim(Text.From(_)) <> ""
+                    )
+                )
+            ),
+        Int64.Type
+    ),
+
+    // =====================================================
+    // 9. FECHA DE PRIMERA SALIDA POSTERIOR
+    // =====================================================
+    AgregarFechaPrimeraSalida = Table.AddColumn(
+        AgregarDestinatariosPosteriores,
+        "FECHA_PRIMERA_SALIDA_POSTERIOR",
+        each
+            let
+                Fechas = List.RemoveNulls(
+                    Table.Column(
+                        [SALIDAS_POSTERIORES],
+                        "FECHA DE MOV."
+                    )
+                )
+            in
+                if List.IsEmpty(Fechas) then null
+                else List.Min(Fechas),
+        type nullable datetime
+    ),
+
+    // =====================================================
+    // 10. CLASIFICAR EVIDENCIA DE REDISTRIBUCION
+    // =====================================================
+    AgregarEvidenciaPosterior = Table.AddColumn(
+        AgregarFechaPrimeraSalida,
+        "EVIDENCIA_POSTERIOR",
+        each
+            if [TOTAL_SALIDAS_POSTERIORES] > 0 then
+                "CON_SALIDAS_POSTERIORES_OBSERVADAS"
+            else
+                "SIN_SALIDAS_POSTERIORES_OBSERVADAS",
+        type text
+    ),
+
+    AgregarPerfilReceptor = Table.AddColumn(
+        AgregarEvidenciaPosterior,
+        "PERFIL_RECEPTOR",
+        each
+            if [TOTAL_SALIDAS_POSTERIORES] > 0 then
+                "POSIBLE_INTERMEDIARIO_O_REDISTRIBUIDOR"
+            else
+                "SIN_EVIDENCIA_POSTERIOR_EN_CARTOLAS_DISPONIBLES",
+        type text
+    ),
+
+    // =====================================================
+    // 11. INCORPORAR PERFIL DEL EMISOR ORIGINAL
+    // =====================================================
+    CombinarPerfiles = Table.NestedJoin(
+        AgregarPerfilReceptor,
         {"ID_TITULAR"},
         qryClasificacionParticipantes,
         {"ID_TITULAR"},
@@ -36,8 +212,8 @@ let
     ExpandirPerfil = Table.ExpandTableColumn(
         CombinarPerfiles,
         "DatosPerfil",
-        {"PERFIL_PRELIMINAR"},
-        {"PERFIL_ORIGEN"}
+        {"PERFIL_PRELIMINAR", "PERFIL_ANALITICO"},
+        {"PERFIL_ORIGEN", "PERFIL_ANALITICO_ORIGEN"}
     ),
 
     ClasificarPerfil = Table.ReplaceValue(
@@ -45,7 +221,18 @@ let
         null,
         "SIN_PERFIL_CLASIFICADO",
         Replacer.ReplaceValue,
-        {"PERFIL_ORIGEN"}
+        {"PERFIL_ORIGEN", "PERFIL_ANALITICO_ORIGEN"}
+    ),
+
+    // =====================================================
+    // 12. ELIMINAR TABLAS INTERNAS DE TRABAJO
+    // =====================================================
+    Resultado = Table.RemoveColumns(
+        ClasificarPerfil,
+        {
+            "MOVIMIENTOS_RECEPTOR",
+            "SALIDAS_POSTERIORES"
+        }
     )
 in
-    ClasificarPerfil
+    Resultado
