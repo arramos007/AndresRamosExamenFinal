@@ -1,8 +1,7 @@
-qry23_DistribucionIndicadoresEntidades
-
 
 let
-    Origen = qry22_ComparacionEntidades,
+    Origen =
+        Table.Buffer(qry22_ComparacionEntidades),
 
     Indicadores = {
         "TOTAL_RECIBIDO",
@@ -15,53 +14,46 @@ let
         "RATIO_SALIDA_ENTRADA"
     },
 
-    Estadisticas =
+    CalcularEstadisticas =
+        (Nombre as text) as record =>
+            let
+                Valores =
+                    List.RemoveNulls(
+                        Table.Column(Origen, Nombre)
+                    ),
+
+                Cantidad = List.Count(Valores),
+
+                Resultado =
+                    if Cantidad = 0 then
+                        [
+                            INDICADOR = Nombre,
+                            CANTIDAD = 0,
+                            MINIMO = null,
+                            MEDIANA = null,
+                            MAXIMO = null,
+                            PROMEDIO = null
+                        ]
+                    else
+                        [
+                            INDICADOR = Nombre,
+                            CANTIDAD = Cantidad,
+                            MINIMO = List.Min(Valores),
+                            MEDIANA = List.Median(Valores),
+                            MAXIMO = List.Max(Valores),
+                            PROMEDIO = List.Average(Valores)
+                        ]
+            in
+                Resultado,
+
+    Registros =
         List.Transform(
             Indicadores,
-            (Indicador) =>
-                let
-                    Valores =
-                        List.Sort(
-                            List.RemoveNulls(
-                                Table.Column(Origen, Indicador)
-                            ),
-                            Order.Ascending
-                        ),
-
-                    Cantidad = List.Count(Valores),
-
-                    Percentil =
-                        (P as number) as nullable number =>
-                            if Cantidad = 0 then
-                                null
-                            else
-                                let
-                                    Posicion = (Cantidad - 1) * P,
-                                    Inferior = Number.RoundDown(Posicion),
-                                    Superior = Number.RoundUp(Posicion),
-                                    Fraccion = Posicion - Inferior,
-                                    ValorInferior = Valores{Inferior},
-                                    ValorSuperior = Valores{Superior}
-                                in
-                                    ValorInferior +
-                                    (ValorSuperior - ValorInferior) * Fraccion
-                in
-                    [
-                        INDICADOR = Indicador,
-                        CANTIDAD = Cantidad,
-                        MINIMO = if Cantidad = 0 then null else List.Min(Valores),
-                        P25 = Percentil(0.25),
-                        MEDIANA = Percentil(0.50),
-                        P75 = Percentil(0.75),
-                        P90 = Percentil(0.90),
-                        P95 = Percentil(0.95),
-                        MAXIMO = if Cantidad = 0 then null else List.Max(Valores),
-                        PROMEDIO = if Cantidad = 0 then null else List.Average(Valores)
-                    ]
+            each CalcularEstadisticas(_)
         ),
 
     Resultado =
-        Table.FromRecords(Estadisticas),
+        Table.FromRecords(Registros),
 
     Tipos =
         Table.TransformColumnTypes(
@@ -70,11 +62,7 @@ let
                 {"INDICADOR", type text},
                 {"CANTIDAD", Int64.Type},
                 {"MINIMO", type number},
-                {"P25", type number},
                 {"MEDIANA", type number},
-                {"P75", type number},
-                {"P90", type number},
-                {"P95", type number},
                 {"MAXIMO", type number},
                 {"PROMEDIO", type number}
             }
