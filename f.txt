@@ -1,21 +1,31 @@
-qry18_ResumenConexionesEmpresariales
+qry19_MatrizConexionesEmpresariales
 
 
 let
     Origen = qry17_EndososConRelacionesEmpresariales,
 
+    // 1. Conservar conexiones con ambas empresas identificadas
+    FiltrarConexiones =
+        Table.SelectRows(
+            Origen,
+            each
+                [RUC_EMPRESA_EMISOR] <> null
+                and [RUC_EMPRESA_BENEFICIARIO] <> null
+        ),
+
+    // 2. Agrupar por RUC y razón social de ambas empresas
     AgruparConexiones =
         Table.Group(
-            Origen,
-            {"TIPO_CONEXION_EMPRESARIAL"},
+            FiltrarConexiones,
+            {
+                "RUC_EMPRESA_EMISOR",
+                "RAZON_SOCIAL_EMISOR",
+                "RUC_EMPRESA_BENEFICIARIO",
+                "RAZON_SOCIAL_BENEFICIARIO"
+            },
             {
                 {
-                    "CANTIDAD_COMBINACIONES",
-                    each Table.RowCount(_),
-                    Int64.Type
-                },
-                {
-                    "OPERACIONES_DISTINTAS",
+                    "CANTIDAD_OPERACIONES",
                     each
                         List.Count(
                             List.Distinct(
@@ -27,53 +37,119 @@ let
                     Int64.Type
                 },
                 {
-                    "EMPRESAS_EMISOR_DISTINTAS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_EMPRESA_EMISOR]
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
-                    "EMPRESAS_BENEFICIARIO_DISTINTAS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_EMPRESA_BENEFICIARIO]
-                                )
-                            )
-                        ),
-                    Int64.Type
-                },
-                {
                     "IMPORTE_REFERENCIAL",
                     each
-                        List.Sum(
+                        let
+                            Operaciones =
+                                Table.Distinct(
+                                    Table.SelectColumns(
+                                        _,
+                                        {
+                                            "ID_OPERACION",
+                                            "MONTO_DEBITO"
+                                        }
+                                    ),
+                                    {"ID_OPERACION"}
+                                )
+                        in
+                            List.Sum(
+                                List.RemoveNulls(
+                                    Operaciones[MONTO_DEBITO]
+                                )
+                            ),
+                    type number
+                },
+                {
+                    "PRIMERA_FECHA",
+                    each List.Min(
+                        List.RemoveNulls([FECHA_DEBITO])
+                    ),
+                    type nullable datetime
+                },
+                {
+                    "ULTIMA_FECHA",
+                    each List.Max(
+                        List.RemoveNulls([FECHA_DEBITO])
+                    ),
+                    type nullable datetime
+                },
+                {
+                    "CANTIDAD_PARTICIPANTES_EMISORES",
+                    each
+                        List.Count(
                             List.Distinct(
-                                Table.SelectColumns(
-                                    _,
-                                    {
-                                        "ID_OPERACION",
-                                        "MONTO_DEBITO"
-                                    }
-                                )[MONTO_DEBITO]
+                                List.RemoveNulls(
+                                    [ID_PARTICIPANTE_EMISOR_CARTOLA]
+                                )
                             )
                         ),
-                    type nullable number
+                    Int64.Type
+                },
+                {
+                    "CANTIDAD_PARTICIPANTES_BENEFICIARIOS",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    [ID_PARTICIPANTE_BENEFICIARIO_CARTOLA]
+                                )
+                            )
+                        ),
+                    Int64.Type
                 }
             }
         ),
 
-    Resultado =
-        Table.Sort(
+    // 3. Identificar conexiones de la misma empresa
+    AgregarTipoConexion =
+        Table.AddColumn(
             AgruparConexiones,
+            "TIPO_CONEXION",
+            each
+                if [RUC_EMPRESA_EMISOR] =
+                    [RUC_EMPRESA_BENEFICIARIO] then
+                    "MISMA_EMPRESA"
+                else
+                    "ENTRE_EMPRESAS_DISTINTAS",
+            type text
+        ),
+
+    // 4. Ordenar por volumen económico observado
+    OrdenarConexiones =
+        Table.Sort(
+            AgregarTipoConexion,
             {
-                {"OPERACIONES_DISTINTAS", Order.Descending}
+                {"IMPORTE_REFERENCIAL", Order.Descending},
+                {"CANTIDAD_OPERACIONES", Order.Descending}
+            }
+        ),
+
+    // 5. Agregar identificador técnico de conexión
+    AgregarIDConexion =
+        Table.AddIndexColumn(
+            OrdenarConexiones,
+            "ID_CONEXION_EMPRESARIAL",
+            1,
+            1,
+            Int64.Type
+        ),
+
+    Resultado =
+        Table.ReorderColumns(
+            AgregarIDConexion,
+            {
+                "ID_CONEXION_EMPRESARIAL",
+                "RUC_EMPRESA_EMISOR",
+                "RAZON_SOCIAL_EMISOR",
+                "RUC_EMPRESA_BENEFICIARIO",
+                "RAZON_SOCIAL_BENEFICIARIO",
+                "TIPO_CONEXION",
+                "CANTIDAD_OPERACIONES",
+                "IMPORTE_REFERENCIAL",
+                "PRIMERA_FECHA",
+                "ULTIMA_FECHA",
+                "CANTIDAD_PARTICIPANTES_EMISORES",
+                "CANTIDAD_PARTICIPANTES_BENEFICIARIOS"
             }
         )
 in
