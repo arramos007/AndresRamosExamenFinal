@@ -1,60 +1,47 @@
-qry07_MovimientosPorEmpresa
+qry08_EndososDebito
 
 
 let
     Origen = qry06_MovimientosConParticipantes,
 
-    UnirRelacionesEmpresariales =
-        Table.NestedJoin(
+    FiltrarEndososDebito =
+        Table.SelectRows(
             Origen,
-            {"ID_PARTICIPANTE_TITULAR"},
-            qry04_RelacionesEmpresariales,
-            {"ID_PARTICIPANTE"},
-            "RELACIONES_EMPRESARIALES",
-            JoinKind.LeftOuter
+            each [CLASIFICACION_MOVIMIENTO] = "ENDOSO_REALIZADO"
         ),
 
-    ExpandirRelacionesEmpresariales =
-        Table.ExpandTableColumn(
-            UnirRelacionesEmpresariales,
-            "RELACIONES_EMPRESARIALES",
+    SeleccionarColumnas =
+        Table.SelectColumns(
+            FiltrarEndososDebito,
             {
-                "ID_RELACION",
-                "ID_EMPRESA",
-                "TIPO_RELACION",
-                "RELACIONES_EMPLEADO"
-            },
-            {
-                "ID_RELACION",
-                "ID_EMPRESA",
-                "TIPO_RELACION",
-                "RELACIONES_EMPLEADO"
+                "ID_REGISTRO_ORIGEN",
+                "ID_PARTICIPANTE_TITULAR",
+                "ID_PARTICIPANTE_EMISOR",
+                "ID_PARTICIPANTE_BENEFICIARIO",
+                "IDENTIFICACION EMPLEADO (EF)",
+                "NOMBRE EMPLEADO (EF)",
+                "IDENTIFICACION DEL EMISOR / ENDOSANTE",
+                "NOMBRE DEL EMISOR / ENDOSANTE",
+                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+                "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
+                "FECHA DE MOV.",
+                "MONTO MOV.",
+                "CODIGO MOV.",
+                "CODIGO LIQUID.",
+                "INST.",
+                "SALDO NCD",
+                "EN TRAMA EMISOR",
+                "EN TRAMA BENEF."
             }
         ),
 
     Resultado =
-        Table.ReorderColumns(
-            ExpandirRelacionesEmpresariales,
+        Table.Sort(
+            SeleccionarColumnas,
             {
-                "ID_REGISTRO_ORIGEN",
-                "ID_RELACION",
-                "ID_PARTICIPANTE_TITULAR",
-                "ID_EMPRESA",
-                "TIPO_RELACION",
-                "RELACIONES_EMPLEADO"
+                {"FECHA DE MOV.", Order.Ascending},
+                {"ID_REGISTRO_ORIGEN", Order.Ascending}
             }
-            &
-            List.RemoveItems(
-                Table.ColumnNames(ExpandirRelacionesEmpresariales),
-                {
-                    "ID_REGISTRO_ORIGEN",
-                    "ID_RELACION",
-                    "ID_PARTICIPANTE_TITULAR",
-                    "ID_EMPRESA",
-                    "TIPO_RELACION",
-                    "RELACIONES_EMPLEADO"
-                }
-            )
         )
 in
     Resultado
