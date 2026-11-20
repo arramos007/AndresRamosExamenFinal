@@ -1,97 +1,77 @@
-qry26_ResumenPerfilesEntidades
+qry27_DetallePerfilesEntidades
 
 
 let
     Origen =
-        Table.Buffer(qry25_PerfilesPreliminaresEntidades),
+        qry25_PerfilesPreliminaresEntidades,
 
-    TotalEntidades =
-        Table.RowCount(Origen),
+    SeleccionarColumnas =
+        Table.SelectColumns(
+            Origen,
+            {
+                "RUC_ENTIDAD",
+                "RAZON_SOCIAL",
+                "TIPO_ENTIDAD",
+                "PRESENCIA_MOVIMIENTOS",
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+                "DIFERENCIA_RECIBIDO_REALIZADO",
+                "RATIO_SALIDA_ENTRADA",
+                "POSIBLE_CONCENTRADORA",
+                "POSIBLE_ACUMULADORA",
+                "POSIBLE_INTERMEDIARIA",
+                "POSIBLE_REDISTRIBUIDORA",
+                "CANTIDAD_PERFILES",
+                "OBSERVACIONES_PERFIL"
+            }
+        ),
 
-    Resumen = {
-        [
-            PERFIL = "POSIBLE_CONCENTRADORA",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [POSIBLE_CONCENTRADORA] = true
-                    )
-                )
-        ],
-        [
-            PERFIL = "POSIBLE_ACUMULADORA",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [POSIBLE_ACUMULADORA] = true
-                    )
-                )
-        ],
-        [
-            PERFIL = "POSIBLE_INTERMEDIARIA",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [POSIBLE_INTERMEDIARIA] = true
-                    )
-                )
-        ],
-        [
-            PERFIL = "POSIBLE_REDISTRIBUIDORA",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [POSIBLE_REDISTRIBUIDORA] = true
-                    )
-                )
-        ],
-        [
-            PERFIL = "DOS_O_MAS_PERFILES",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [CANTIDAD_PERFILES] >= 2
-                    )
-                )
-        ],
-        [
-            PERFIL = "SIN_PERFIL_PRELIMINAR",
-            CANTIDAD =
-                Table.RowCount(
-                    Table.SelectRows(
-                        Origen,
-                        each [CANTIDAD_PERFILES] = 0
-                    )
-                )
-        ]
-    },
+    OrdenarResultados =
+        Table.Sort(
+            SeleccionarColumnas,
+            {
+                {"CANTIDAD_PERFILES", Order.Descending},
+                {"TOTAL_RECIBIDO", Order.Descending}
+            }
+        ),
 
-    Resultado =
-        Table.FromRecords(Resumen),
-
-    AgregarTotal =
-        Table.AddColumn(
-            Resultado,
-            "TOTAL_ENTIDADES",
-            each TotalEntidades,
+    AgregarPosicion =
+        Table.AddIndexColumn(
+            OrdenarResultados,
+            "POSICION_ANALISIS",
+            1,
+            1,
             Int64.Type
         ),
 
-    AgregarPorcentaje =
-        Table.AddColumn(
-            AgregarTotal,
-            "PORCENTAJE",
-            each
-                if [TOTAL_ENTIDADES] = 0 then
-                    0
-                else
-                    [CANTIDAD] / [TOTAL_ENTIDADES] * 100,
-            type number
+    Resultado =
+        Table.ReorderColumns(
+            AgregarPosicion,
+            {
+                "POSICION_ANALISIS",
+                "RUC_ENTIDAD",
+                "RAZON_SOCIAL",
+                "TIPO_ENTIDAD",
+                "PRESENCIA_MOVIMIENTOS",
+                "TOTAL_RECIBIDO",
+                "TOTAL_REALIZADO",
+                "DIFERENCIA_RECIBIDO_REALIZADO",
+                "RATIO_SALIDA_ENTRADA",
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+                "POSIBLE_CONCENTRADORA",
+                "POSIBLE_ACUMULADORA",
+                "POSIBLE_INTERMEDIARIA",
+                "POSIBLE_REDISTRIBUIDORA",
+                "CANTIDAD_PERFILES",
+                "OBSERVACIONES_PERFIL"
+            }
         )
 in
-    AgregarPorcentaje
+    Resultado
