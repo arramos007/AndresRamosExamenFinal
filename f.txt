@@ -36,6 +36,26 @@ let
             "PARTICIPANTE_EMISOR",
             {"ID_PARTICIPANTE"},
             {"ID_PARTICIPANTE_EMISOR"}
+        ),
+
+    UnirParticipanteBeneficiario =
+        Table.NestedJoin(
+            ExpandirParticipanteEmisor,
+            {
+                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION"
+            },
+            qry02_Participantes,
+            {"IDENTIFICACION_PARTICIPANTE"},
+            "PARTICIPANTE_BENEFICIARIO",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirParticipanteBeneficiario =
+        Table.ExpandTableColumn(
+            UnirParticipanteBeneficiario,
+            "PARTICIPANTE_BENEFICIARIO",
+            {"ID_PARTICIPANTE"},
+            {"ID_PARTICIPANTE_BENEFICIARIO"}
         )
 in
-    ExpandirParticipanteEmisor
+    ExpandirParticipanteBeneficiario
