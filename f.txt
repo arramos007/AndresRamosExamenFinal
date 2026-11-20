@@ -1,72 +1,254 @@
+qry30_ResumenConexionesParticipantes
+
 
 let
-    Origen = qry28_RutasEconomicasDirectas,
+    Origen =
+        qry28_RutasEconomicasDirectas,
 
-    TotalFilas = Table.RowCount(Origen),
-
-    DebitosDistintos =
-        List.Count(
-            List.Distinct(Origen[ID_REGISTRO_DEBITO])
-        ),
-
-    CreditosDistintos =
-        List.Count(
-            List.Distinct(Origen[ID_REGISTRO_CREDITO])
-        ),
-
-    ImportesIguales =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [MONTO_DEBITO] = [MONTO_CREDITO]
-            )
-        ),
-
-    OrigenIdentificado =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ID_PARTICIPANTE_ORIGEN] <> null
-            )
-        ),
-
-    DestinoIdentificado =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ID_PARTICIPANTE_DESTINO] <> null
-            )
-        ),
-
-    Validaciones = {
-        {"TOTAL_OPERACIONES", TotalFilas, 1338},
-        {"DEBITOS_DISTINTOS", DebitosDistintos, 1338},
-        {"CREDITOS_DISTINTOS", CreditosDistintos, 1338},
-        {"IMPORTES_IGUALES", ImportesIguales, 1338},
-        {"ORIGEN_IDENTIFICADO", OrigenIdentificado, 1338},
-        {"DESTINO_IDENTIFICADO", DestinoIdentificado, 1338}
-    },
-
-    Tabla =
-        Table.FromRows(
-            Validaciones,
+    // 1. Resumen de entradas por participante
+    EntradasSeleccionadas =
+        Table.SelectColumns(
+            Origen,
             {
-                "VALIDACION",
-                "RESULTADO",
-                "ESPERADO"
+                "ID_PARTICIPANTE_DESTINO",
+                "ID_PARTICIPANTE_ORIGEN",
+                "ID_REGISTRO_DEBITO",
+                "MONTO_DEBITO"
             }
         ),
 
-    AgregarEstado =
+    EntradasAgrupadas =
+        Table.Group(
+            EntradasSeleccionadas,
+            {"ID_PARTICIPANTE_DESTINO"},
+            {
+                {
+                    "CANTIDAD_ENDOSOS_RECIBIDOS",
+                    each List.Count(
+                        List.Distinct([ID_REGISTRO_DEBITO])
+                    ),
+                    Int64.Type
+                },
+                {
+                    "TOTAL_RECIBIDO",
+                    each List.Sum(
+                        List.Distinct(
+                            Table.SelectColumns(
+                                _,
+                                {
+                                    "ID_REGISTRO_DEBITO",
+                                    "MONTO_DEBITO"
+                                }
+                            )[MONTO_DEBITO]
+                        )
+                    ),
+                    type number
+                },
+                {
+                    "CANTIDAD_EMISORES_DISTINTOS",
+                    each List.Count(
+                        List.Distinct(
+                            List.RemoveNulls(
+                                [ID_PARTICIPANTE_ORIGEN]
+                            )
+                        )
+                    ),
+                    Int64.Type
+                }
+            }
+        ),
+
+    RenombrarEntradas =
+        Table.RenameColumns(
+            EntradasAgrupadas,
+            {
+                {
+                    "ID_PARTICIPANTE_DESTINO",
+                    "ID_PARTICIPANTE"
+                }
+            }
+        ),
+
+    // 2. Resumen de salidas por participante
+    SalidasSeleccionadas =
+        Table.SelectColumns(
+            Origen,
+            {
+                "ID_PARTICIPANTE_ORIGEN",
+                "ID_PARTICIPANTE_DESTINO",
+                "ID_REGISTRO_DEBITO",
+                "MONTO_DEBITO"
+            }
+        ),
+
+    SalidasAgrupadas =
+        Table.Group(
+            SalidasSeleccionadas,
+            {"ID_PARTICIPANTE_ORIGEN"},
+            {
+                {
+                    "CANTIDAD_ENDOSOS_REALIZADOS",
+                    each List.Count(
+                        List.Distinct([ID_REGISTRO_DEBITO])
+                    ),
+                    Int64.Type
+                },
+                {
+                    "TOTAL_REALIZADO",
+                    each List.Sum(
+                        List.Distinct(
+                            Table.SelectColumns(
+                                _,
+                                {
+                                    "ID_REGISTRO_DEBITO",
+                                    "MONTO_DEBITO"
+                                }
+                            )[MONTO_DEBITO]
+                        )
+                    ),
+                    type number
+                },
+                {
+                    "CANTIDAD_BENEFICIARIOS_DISTINTOS",
+                    each List.Count(
+                        List.Distinct(
+                            List.RemoveNulls(
+                                [ID_PARTICIPANTE_DESTINO]
+                            )
+                        )
+                    ),
+                    Int64.Type
+                }
+            }
+        ),
+
+    RenombrarSalidas =
+        Table.RenameColumns(
+            SalidasAgrupadas,
+            {
+                {
+                    "ID_PARTICIPANTE_ORIGEN",
+                    "ID_PARTICIPANTE"
+                }
+            }
+        ),
+
+    // 3. Construir universo de participantes
+    UniversoEntradas =
+        Table.SelectColumns(
+            RenombrarEntradas,
+            {"ID_PARTICIPANTE"}
+        ),
+
+    UniversoSalidas =
+        Table.SelectColumns(
+            RenombrarSalidas,
+            {"ID_PARTICIPANTE"}
+        ),
+
+    Universo =
+        Table.Distinct(
+            Table.Combine(
+                {
+                    UniversoEntradas,
+                    UniversoSalidas
+                }
+            )
+        ),
+
+    // 4. Incorporar entradas
+    UnirEntradas =
+        Table.NestedJoin(
+            Universo,
+            {"ID_PARTICIPANTE"},
+            RenombrarEntradas,
+            {"ID_PARTICIPANTE"},
+            "ENTRADAS",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirEntradas =
+        Table.ExpandTableColumn(
+            UnirEntradas,
+            "ENTRADAS",
+            {
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_EMISORES_DISTINTOS"
+            }
+        ),
+
+    // 5. Incorporar salidas
+    UnirSalidas =
+        Table.NestedJoin(
+            ExpandirEntradas,
+            {"ID_PARTICIPANTE"},
+            RenombrarSalidas,
+            {"ID_PARTICIPANTE"},
+            "SALIDAS",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirSalidas =
+        Table.ExpandTableColumn(
+            UnirSalidas,
+            "SALIDAS",
+            {
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_BENEFICIARIOS_DISTINTOS"
+            }
+        ),
+
+    // 6. Reemplazar ausencias por cero
+    ReemplazarNulos =
+        Table.ReplaceValue(
+            ExpandirSalidas,
+            null,
+            0,
+            Replacer.ReplaceValue,
+            {
+                "CANTIDAD_ENDOSOS_RECIBIDOS",
+                "TOTAL_RECIBIDO",
+                "CANTIDAD_EMISORES_DISTINTOS",
+                "CANTIDAD_ENDOSOS_REALIZADOS",
+                "TOTAL_REALIZADO",
+                "CANTIDAD_BENEFICIARIOS_DISTINTOS"
+            }
+        ),
+
+    // 7. Calcular diferencia observada
+    AgregarDiferencia =
         Table.AddColumn(
-            Tabla,
-            "ESTADO",
+            ReemplazarNulos,
+            "DIFERENCIA_ENTRADAS_SALIDAS",
+            each [TOTAL_RECIBIDO] - [TOTAL_REALIZADO],
+            type number
+        ),
+
+    // 8. Clasificar comportamiento de movimiento
+    AgregarTipoActividad =
+        Table.AddColumn(
+            AgregarDiferencia,
+            "TIPO_ACTIVIDAD",
             each
-                if [RESULTADO] = [ESPERADO] then
-                    "CORRECTO"
+                if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0
+                    and [CANTIDAD_ENDOSOS_REALIZADOS] > 0 then
+                    "RECIBE_Y_TRANSFIERE"
+                else if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0 then
+                    "SOLO_RECIBE"
                 else
-                    "REVISAR",
+                    "SOLO_TRANSFIERE",
             type text
+        ),
+
+    Resultado =
+        Table.Sort(
+            AgregarTipoActividad,
+            {
+                {"TOTAL_RECIBIDO", Order.Descending},
+                {"TOTAL_REALIZADO", Order.Descending}
+            }
         )
 in
-    AgregarEstado
+    Resultado
