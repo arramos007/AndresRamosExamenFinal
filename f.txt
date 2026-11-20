@@ -1,157 +1,97 @@
-qry25_PerfilesPreliminaresEntidades
+qry26_ResumenPerfilesEntidades
 
 
 let
-    // 1. Obtener entidades y percentiles
     Origen =
-        Table.Buffer(qry22_ComparacionEntidades),
+        Table.Buffer(qry25_PerfilesPreliminaresEntidades),
 
-    Percentiles =
-        Table.Buffer(qry24_PercentilesIndicadores),
+    TotalEntidades =
+        Table.RowCount(Origen),
 
-    // 2. Recuperar umbrales estadísticos
-    Umbral =
-        (Indicador as text, Columna as text) as number =>
-            let
-                Fila =
+    Resumen = {
+        [
+            PERFIL = "POSIBLE_CONCENTRADORA",
+            CANTIDAD =
+                Table.RowCount(
                     Table.SelectRows(
-                        Percentiles,
-                        each [INDICADOR] = Indicador
+                        Origen,
+                        each [POSIBLE_CONCENTRADORA] = true
                     )
-            in
-                Record.Field(Fila{0}, Columna),
-
-    P75Recibido =
-        Umbral("TOTAL_RECIBIDO", "P75"),
-
-    P90Recibido =
-        Umbral("TOTAL_RECIBIDO", "P90"),
-
-    P90Realizado =
-        Umbral("TOTAL_REALIZADO", "P90"),
-
-    P75Emisores =
-        Umbral("CANTIDAD_RUC_EMISORES_RELACIONADOS", "P75"),
-
-    P75Beneficiarios =
-        Umbral("CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS", "P75"),
-
-    // 3. Posible concentradora
-    AgregarConcentradora =
-        Table.AddColumn(
-            Origen,
-            "POSIBLE_CONCENTRADORA",
-            each
-                [TOTAL_RECIBIDO] >= P90Recibido
-                and
-                [CANTIDAD_RUC_EMISORES_RELACIONADOS]
-                    >= P75Emisores,
-            type logical
-        ),
-
-    // 4. Posible acumuladora
-    AgregarAcumuladora =
-        Table.AddColumn(
-            AgregarConcentradora,
-            "POSIBLE_ACUMULADORA",
-            each
-                [DIFERENCIA_RECIBIDO_REALIZADO] > 0
-                and [TOTAL_RECIBIDO] >= P75Recibido,
-            type logical
-        ),
-
-    // 5. Posible intermediaria
-    AgregarIntermediaria =
-        Table.AddColumn(
-            AgregarAcumuladora,
-            "POSIBLE_INTERMEDIARIA",
-            each
-                [CANTIDAD_ENDOSOS_RECIBIDOS] > 0
-                and [CANTIDAD_ENDOSOS_REALIZADOS] > 0
-                and
-                [CANTIDAD_RUC_EMISORES_RELACIONADOS]
-                    >= P75Emisores
-                and
-                [CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS]
-                    >= P75Beneficiarios,
-            type logical
-        ),
-
-    // 6. Posible redistribuidora
-    AgregarRedistribuidora =
-        Table.AddColumn(
-            AgregarIntermediaria,
-            "POSIBLE_REDISTRIBUIDORA",
-            each
-                [TOTAL_REALIZADO] >= P90Realizado
-                and [RATIO_SALIDA_ENTRADA] <> null
-                and [RATIO_SALIDA_ENTRADA] > 1,
-            type logical
-        ),
-
-    // 7. Generar observaciones por entidad
-    AgregarObservaciones =
-        Table.AddColumn(
-            AgregarRedistribuidora,
-            "OBSERVACIONES_PERFIL",
-            each
-                let
-                    Perfiles = {
-                        if [POSIBLE_CONCENTRADORA] then
-                            "Volumen recibido y diversidad de emisores elevados"
-                        else null,
-
-                        if [POSIBLE_ACUMULADORA] then
-                            "Entradas observadas superiores a salidas y volumen recibido elevado"
-                        else null,
-
-                        if [POSIBLE_INTERMEDIARIA] then
-                            "Actividad en ambos sentidos y diversidad de conexiones"
-                        else null,
-
-                        if [POSIBLE_REDISTRIBUIDORA] then
-                            "Salidas observadas superiores a entradas y volumen realizado elevado"
-                        else null
-                    },
-
-                    Observaciones =
-                        List.RemoveNulls(Perfiles)
-                in
-                    if List.Count(Observaciones) = 0 then
-                        "Sin perfil preliminar según los criterios actuales"
-                    else
-                        Text.Combine(Observaciones, " | "),
-            type text
-        ),
-
-    // 8. Agregar cantidad de perfiles identificados
-    AgregarCantidadPerfiles =
-        Table.AddColumn(
-            AgregarObservaciones,
-            "CANTIDAD_PERFILES",
-            each
-                List.Count(
-                    List.Select(
-                        {
-                            [POSIBLE_CONCENTRADORA],
-                            [POSIBLE_ACUMULADORA],
-                            [POSIBLE_INTERMEDIARIA],
-                            [POSIBLE_REDISTRIBUIDORA]
-                        },
-                        each _ = true
+                )
+        ],
+        [
+            PERFIL = "POSIBLE_ACUMULADORA",
+            CANTIDAD =
+                Table.RowCount(
+                    Table.SelectRows(
+                        Origen,
+                        each [POSIBLE_ACUMULADORA] = true
                     )
-                ),
+                )
+        ],
+        [
+            PERFIL = "POSIBLE_INTERMEDIARIA",
+            CANTIDAD =
+                Table.RowCount(
+                    Table.SelectRows(
+                        Origen,
+                        each [POSIBLE_INTERMEDIARIA] = true
+                    )
+                )
+        ],
+        [
+            PERFIL = "POSIBLE_REDISTRIBUIDORA",
+            CANTIDAD =
+                Table.RowCount(
+                    Table.SelectRows(
+                        Origen,
+                        each [POSIBLE_REDISTRIBUIDORA] = true
+                    )
+                )
+        ],
+        [
+            PERFIL = "DOS_O_MAS_PERFILES",
+            CANTIDAD =
+                Table.RowCount(
+                    Table.SelectRows(
+                        Origen,
+                        each [CANTIDAD_PERFILES] >= 2
+                    )
+                )
+        ],
+        [
+            PERFIL = "SIN_PERFIL_PRELIMINAR",
+            CANTIDAD =
+                Table.RowCount(
+                    Table.SelectRows(
+                        Origen,
+                        each [CANTIDAD_PERFILES] = 0
+                    )
+                )
+        ]
+    },
+
+    Resultado =
+        Table.FromRecords(Resumen),
+
+    AgregarTotal =
+        Table.AddColumn(
+            Resultado,
+            "TOTAL_ENTIDADES",
+            each TotalEntidades,
             Int64.Type
         ),
 
-    // 9. Ordenar por volumen recibido
-    Resultado =
-        Table.Sort(
-            AgregarCantidadPerfiles,
-            {
-                {"CANTIDAD_PERFILES", Order.Descending},
-                {"TOTAL_RECIBIDO", Order.Descending}
-            }
+    AgregarPorcentaje =
+        Table.AddColumn(
+            AgregarTotal,
+            "PORCENTAJE",
+            each
+                if [TOTAL_ENTIDADES] = 0 then
+                    0
+                else
+                    [CANTIDAD] / [TOTAL_ENTIDADES] * 100,
+            type number
         )
 in
-    Resultado
+    AgregarPorcentaje
