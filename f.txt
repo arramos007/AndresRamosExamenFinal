@@ -1,132 +1,78 @@
-qry15_EndososConciliados
+qry16_ValidarEndososConciliados
 
 
 let
-    // 1. Seleccionar conciliaciones confirmadas
-    Origen = qry13_ConciliacionEndosos,
+    Origen = qry15_EndososConciliados,
 
-    FiltrarConciliados =
-        Table.SelectRows(
-            Origen,
-            each [ESTADO_CONCILIACION] = "CONCILIADO"
+    TotalFilas =
+        Table.RowCount(Origen),
+
+    DebitosDistintos =
+        List.Count(
+            List.Distinct(
+                Origen[ID_REGISTRO_DEBITO]
+            )
         ),
 
-    SeleccionarConciliaciones =
-        Table.SelectColumns(
-            FiltrarConciliados,
-            {
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS"
-            }
+    CreditosDistintos =
+        List.Count(
+            List.Distinct(
+                Origen[ID_REGISTRO_CREDITO]
+            )
         ),
 
-    // 2. Recuperar información completa del débito
-    UnirDebitos =
-        Table.NestedJoin(
-            SeleccionarConciliaciones,
-            {"ID_REGISTRO_DEBITO"},
-            qry08_EndososDebito,
-            {"ID_REGISTRO_ORIGEN"},
-            "DATOS_DEBITO",
-            JoinKind.LeftOuter
+    ImportesIguales =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [MONTO_DEBITO] = [MONTO_CREDITO]
+            )
         ),
 
-    ExpandirDebitos =
-        Table.ExpandTableColumn(
-            UnirDebitos,
-            "DATOS_DEBITO",
-            {
-                "ID_PARTICIPANTE_TITULAR",
-                "ID_PARTICIPANTE_EMISOR",
-                "ID_PARTICIPANTE_BENEFICIARIO",
-                "IDENTIFICACION EMPLEADO (EF)",
-                "NOMBRE EMPLEADO (EF)",
-                "IDENTIFICACION DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-                "NOMBRE DEL BENEFICIARIO / EMISION / ENDOSO / UTILIZACION",
-                "CODIGO MOV.",
-                "CODIGO LIQUID.",
-                "INST.",
-                "SALDO NCD",
-                "EN TRAMA EMISOR",
-                "EN TRAMA BENEF."
-            },
-            {
-                "ID_PARTICIPANTE_EMISOR_CARTOLA",
-                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
-                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
-                "IDENTIFICACION_EMISOR",
-                "NOMBRE_EMISOR",
-                "IDENTIFICACION_BENEFICIARIO",
-                "NOMBRE_BENEFICIARIO",
-                "CODIGO_MOV_DEBITO",
-                "CODIGO_LIQUID_DEBITO",
-                "INST_DEBITO",
-                "SALDO_POSTERIOR_DEBITO",
-                "MARCA_TRAMA_EMISOR",
-                "MARCA_TRAMA_BENEFICIARIO"
-            }
+    DiferenciasCorrectas =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    [DIFERENCIA_SEGUNDOS] <= 3
+                    and [DIFERENCIA_SEGUNDOS] >= 0
+            )
         ),
 
-    // 3. Recuperar información completa del crédito
-    UnirCreditos =
-        Table.NestedJoin(
-            ExpandirDebitos,
-            {"ID_REGISTRO_CREDITO"},
-            qry09_EndososCredito,
-            {"ID_REGISTRO_ORIGEN"},
-            "DATOS_CREDITO",
-            JoinKind.LeftOuter
-        ),
-
-    ExpandirCreditos =
-        Table.ExpandTableColumn(
-            UnirCreditos,
-            "DATOS_CREDITO",
-            {
-                "ID_PARTICIPANTE_TITULAR",
-                "IDENTIFICACION EMPLEADO (EF)",
-                "NOMBRE EMPLEADO (EF)",
-                "IDENTIFICACION DEL EMISOR / ENDOSANTE",
-                "NOMBRE DEL EMISOR / ENDOSANTE",
-                "CODIGO MOV.",
-                "CODIGO LIQUID.",
-                "INST.",
-                "SALDO NCD"
-            },
-            {
-                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
-                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
-                "NOMBRE_BENEFICIARIO_CARTOLA",
-                "IDENTIFICACION_EMISOR_CREDITO",
-                "NOMBRE_EMISOR_CREDITO",
-                "CODIGO_MOV_CREDITO",
-                "CODIGO_LIQUID_CREDITO",
-                "INST_CREDITO",
-                "SALDO_POSTERIOR_CREDITO"
-            }
-        ),
-
-    // 4. Identificar la operación económica
-    AgregarTipoOperacion =
-        Table.AddColumn(
-            ExpandirCreditos,
-            "TIPO_OPERACION",
-            each "ENDOSO_CONCILIADO",
-            type text
-        ),
-
-    // 5. Ordenar resultados
     Resultado =
-        Table.Sort(
-            AgregarTipoOperacion,
+        #table(
+            {"VALIDACION", "RESULTADO", "ESPERADO", "ESTADO"},
             {
-                {"FECHA_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_DEBITO", Order.Ascending}
+                {
+                    "TOTAL DE FILAS",
+                    TotalFilas,
+                    1338,
+                    if TotalFilas = 1338 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "DEBITOS DISTINTOS",
+                    DebitosDistintos,
+                    1338,
+                    if DebitosDistintos = 1338 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "CREDITOS DISTINTOS",
+                    CreditosDistintos,
+                    1338,
+                    if CreditosDistintos = 1338 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "IMPORTES IGUALES",
+                    ImportesIguales,
+                    1338,
+                    if ImportesIguales = 1338 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "DIFERENCIAS HASTA 3 SEGUNDOS",
+                    DiferenciasCorrectas,
+                    1338,
+                    if DiferenciasCorrectas = 1338 then "CORRECTO" else "REVISAR"
+                }
             }
         )
 in
