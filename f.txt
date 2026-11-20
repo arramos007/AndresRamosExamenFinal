@@ -1,66 +1,25 @@
-qry05_MovimientosEconomicos
+qry06_MovimientosConParticipantes
 
 
 let
-    Origen = qry01_RegistrosOriginales,
+    Origen = qry05_MovimientosEconomicos,
 
-    AgregarClasificacion =
-        Table.AddColumn(
+    UnirParticipanteTitular =
+        Table.NestedJoin(
             Origen,
-            "CLASIFICACION_MOVIMIENTO",
-            each
-                let
-                    NombreMovimiento =
-                        if [#"NOMBRE MOV."] = null then
-                            ""
-                        else
-                            Text.Upper(
-                                Text.Trim(
-                                    Text.From([#"NOMBRE MOV."])
-                                )
-                            ),
-
-                    TipoMovimiento =
-                        if [#"TIPO MOV."] = null then
-                            ""
-                        else
-                            Text.Upper(
-                                Text.Trim(
-                                    Text.From([#"TIPO MOV."])
-                                )
-                            )
-                in
-                    if NombreMovimiento = "EMISION"
-                        and TipoMovimiento = "CRE" then
-                        "ACREDITACION_SRI"
-
-                    else if NombreMovimiento = "ENDOSO"
-                        and TipoMovimiento = "CRE" then
-                        "ENDOSO_RECIBIDO"
-
-                    else if NombreMovimiento = "ENDOSO"
-                        and TipoMovimiento = "DEB" then
-                        "ENDOSO_REALIZADO"
-
-                    else if NombreMovimiento = "UTILIZACION" then
-                        "UTILIZACION"
-
-                    else
-                        "OTRO_MOVIMIENTO_NO_CLASIFICADO",
-            type text
+            {"IDENTIFICACION EMPLEADO (EF)"},
+            qry02_Participantes,
+            {"IDENTIFICACION_PARTICIPANTE"},
+            "PARTICIPANTE_TITULAR",
+            JoinKind.LeftOuter
         ),
 
-    Resultado =
-        Table.ReorderColumns(
-            AgregarClasificacion,
-            {"ID_REGISTRO_ORIGEN", "CLASIFICACION_MOVIMIENTO"}
-                & List.RemoveItems(
-                    Table.ColumnNames(AgregarClasificacion),
-                    {
-                        "ID_REGISTRO_ORIGEN",
-                        "CLASIFICACION_MOVIMIENTO"
-                    }
-                )
+    ExpandirParticipanteTitular =
+        Table.ExpandTableColumn(
+            UnirParticipanteTitular,
+            "PARTICIPANTE_TITULAR",
+            {"ID_PARTICIPANTE"},
+            {"ID_PARTICIPANTE_TITULAR"}
         )
 in
-    Resultado
+    ExpandirParticipanteTitular
