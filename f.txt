@@ -1,36 +1,18 @@
-qry29_ValidacionRutasDirectas
-
 
 let
-    Origen =
-        qry28_RutasEconomicasDirectas,
+    Origen = qry28_RutasEconomicasDirectas,
 
-    TotalFilas =
-        Table.RowCount(Origen),
+    TotalFilas = Table.RowCount(Origen),
 
     DebitosDistintos =
         List.Count(
-            List.Distinct(
-                List.RemoveNulls(
-                    Origen[ID_REGISTRO_DEBITO]
-                )
-            )
+            List.Distinct(Origen[ID_REGISTRO_DEBITO])
         ),
 
     CreditosDistintos =
         List.Count(
-            List.Distinct(
-                List.RemoveNulls(
-                    Origen[ID_REGISTRO_CREDITO]
-                )
-            )
+            List.Distinct(Origen[ID_REGISTRO_CREDITO])
         ),
-
-    DebitosDuplicados =
-        TotalFilas - DebitosDistintos,
-
-    CreditosDuplicados =
-        TotalFilas - CreditosDistintos,
 
     ImportesIguales =
         Table.RowCount(
@@ -56,63 +38,28 @@ let
             )
         ),
 
-    Autorreferencias =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ES_CICLO] = true
-            )
-        ),
-
     Validaciones = {
-        [
-            VALIDACION = "TOTAL_OPERACIONES",
-            RESULTADO = TotalFilas,
-            ESPERADO = 1338
-        ],
-        [
-            VALIDACION = "DEBITOS_DISTINTOS",
-            RESULTADO = DebitosDistintos,
-            ESPERADO = TotalFilas
-        ],
-        [
-            VALIDACION = "CREDITOS_DISTINTOS",
-            RESULTADO = CreditosDistintos,
-            ESPERADO = TotalFilas
-        ],
-        [
-            VALIDACION = "DEBITOS_DUPLICADOS",
-            RESULTADO = DebitosDuplicados,
-            ESPERADO = 0
-        ],
-        [
-            VALIDACION = "CREDITOS_DUPLICADOS",
-            RESULTADO = CreditosDuplicados,
-            ESPERADO = 0
-        ],
-        [
-            VALIDACION = "IMPORTES_IGUALES",
-            RESULTADO = ImportesIguales,
-            ESPERADO = TotalFilas
-        ],
-        [
-            VALIDACION = "ORIGEN_IDENTIFICADO",
-            RESULTADO = OrigenIdentificado,
-            ESPERADO = TotalFilas
-        ],
-        [
-            VALIDACION = "DESTINO_IDENTIFICADO",
-            RESULTADO = DestinoIdentificado,
-            ESPERADO = TotalFilas
-        }
+        {"TOTAL_OPERACIONES", TotalFilas, 1338},
+        {"DEBITOS_DISTINTOS", DebitosDistintos, 1338},
+        {"CREDITOS_DISTINTOS", CreditosDistintos, 1338},
+        {"IMPORTES_IGUALES", ImportesIguales, 1338},
+        {"ORIGEN_IDENTIFICADO", OrigenIdentificado, 1338},
+        {"DESTINO_IDENTIFICADO", DestinoIdentificado, 1338}
     },
 
-    TablaValidaciones =
-        Table.FromRecords(Validaciones),
+    Tabla =
+        Table.FromRows(
+            Validaciones,
+            {
+                "VALIDACION",
+                "RESULTADO",
+                "ESPERADO"
+            }
+        ),
 
     AgregarEstado =
         Table.AddColumn(
-            TablaValidaciones,
+            Tabla,
             "ESTADO",
             each
                 if [RESULTADO] = [ESPERADO] then
