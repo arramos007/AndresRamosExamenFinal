@@ -1,146 +1,75 @@
-qry13_ConciliacionEndosos
+qry14_ResumenConciliacion
 
 
 let
-    // 1. Obtener candidatos clasificados
-    OrigenCandidatos = qry12_ClasificacionCandidatos,
+    Origen = qry13_ConciliacionEndosos,
 
-    // 2. Preparar candidatos con estado definitivo
-    AgregarEstadoCandidato =
-        Table.AddColumn(
-            OrigenCandidatos,
-            "ESTADO_CONCILIACION",
-            each
-                if [ESTADO_CANDIDATO] = "CANDIDATO_UNICO" then
-                    "CONCILIADO"
-                else
-                    "AMBIGUO",
-            type text
-        ),
-
-    CandidatosSeleccionados =
-        Table.SelectColumns(
-            AgregarEstadoCandidato,
+    AgruparEstados =
+        Table.Group(
+            Origen,
+            {"ESTADO_CONCILIACION"},
             {
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_BENEFICIARIO_DEBITO",
-                "ID_TITULAR_CREDITO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "CANTIDAD_CANDIDATOS_DEBITO",
-                "CANTIDAD_CANDIDATOS_CREDITO",
-                "ESTADO_CONCILIACION"
+                {
+                    "CANTIDAD_FILAS",
+                    each Table.RowCount(_),
+                    Int64.Type
+                },
+                {
+                    "DEBITOS_DISTINTOS",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    [ID_REGISTRO_DEBITO]
+                                )
+                            )
+                        ),
+                    Int64.Type
+                },
+                {
+                    "CREDITOS_DISTINTOS",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    [ID_REGISTRO_CREDITO]
+                                )
+                            )
+                        ),
+                    Int64.Type
+                },
+                {
+                    "IMPORTE_DEBITOS",
+                    each
+                        List.Sum(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    [MONTO_DEBITO]
+                                )
+                            )
+                        ),
+                    type nullable number
+                },
+                {
+                    "IMPORTE_CREDITOS",
+                    each
+                        List.Sum(
+                            List.Distinct(
+                                List.RemoveNulls(
+                                    [MONTO_CREDITO]
+                                )
+                            )
+                        ),
+                    type nullable number
+                }
             }
         ),
 
-    // 3. Obtener débitos sin candidato
-    OrigenPendientes = qry11_CandidatosConciliacion,
-
-    DebitosSinCandidato =
-        Table.SelectRows(
-            OrigenPendientes,
-            each [TIPO_REGISTRO] = "DEBITO_SIN_CANDIDATO"
-        ),
-
-    AgregarEstadoDebito =
-        Table.AddColumn(
-            DebitosSinCandidato,
-            "ESTADO_CONCILIACION",
-            each "PENDIENTE_CREDITO",
-            type text
-        ),
-
-    DebitosSeleccionados =
-        Table.SelectColumns(
-            AgregarEstadoDebito,
-            {
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_BENEFICIARIO_DEBITO",
-                "ID_TITULAR_CREDITO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "CANTIDAD_CANDIDATOS_DEBITO",
-                "ESTADO_CONCILIACION"
-            },
-            MissingField.UseNull
-        ),
-
-    DebitosConConteoCredito =
-        Table.AddColumn(
-            DebitosSeleccionados,
-            "CANTIDAD_CANDIDATOS_CREDITO",
-            each 0,
-            Int64.Type
-        ),
-
-    // 4. Obtener créditos sin candidato
-    CreditosSinCandidato =
-        Table.SelectRows(
-            OrigenPendientes,
-            each [TIPO_REGISTRO] = "CREDITO_SIN_CANDIDATO"
-        ),
-
-    AgregarEstadoCredito =
-        Table.AddColumn(
-            CreditosSinCandidato,
-            "ESTADO_CONCILIACION",
-            each "PENDIENTE_DEBITO",
-            type text
-        ),
-
-    CreditosSeleccionados =
-        Table.SelectColumns(
-            AgregarEstadoCredito,
-            {
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_BENEFICIARIO_DEBITO",
-                "ID_TITULAR_CREDITO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "CANTIDAD_CANDIDATOS_DEBITO",
-                "ESTADO_CONCILIACION"
-            },
-            MissingField.UseNull
-        ),
-
-    CreditosConConteo =
-        Table.AddColumn(
-            CreditosSeleccionados,
-            "CANTIDAD_CANDIDATOS_CREDITO",
-            each 0,
-            Int64.Type
-        ),
-
-    // 5. Unificar todos los resultados
-    UnificarResultados =
-        Table.Combine(
-            {
-                CandidatosSeleccionados,
-                DebitosConConteoCredito,
-                CreditosConConteo
-            }
-        ),
-
-    // 6. Ordenar resultados
     Resultado =
         Table.Sort(
-            UnificarResultados,
+            AgruparEstados,
             {
-                {"ESTADO_CONCILIACION", Order.Ascending},
-                {"ID_REGISTRO_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_CREDITO", Order.Ascending}
+                {"ESTADO_CONCILIACION", Order.Ascending}
             }
         )
 in
