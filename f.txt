@@ -1,3 +1,5 @@
+qry24_PercentilesIndicadores
+
 
 let
     Origen =
@@ -6,43 +8,45 @@ let
     Indicadores = {
         "TOTAL_RECIBIDO",
         "TOTAL_REALIZADO",
-        "DIFERENCIA_RECIBIDO_REALIZADO",
         "CANTIDAD_ENDOSOS_RECIBIDOS",
-        "CANTIDAD_ENDOSOS_REALIZADOS",
         "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-        "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-        "RATIO_SALIDA_ENTRADA"
+        "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS"
     },
+
+    CalcularPercentil =
+        (Valores as list, P as number) as number =>
+            let
+                Cantidad = List.Count(Valores),
+                Posicion = (Cantidad - 1) * P,
+                Inferior = Number.RoundDown(Posicion),
+                Superior = Number.RoundUp(Posicion),
+                Fraccion = Posicion - Inferior,
+                ValorInferior = Valores{Inferior},
+                ValorSuperior = Valores{Superior}
+            in
+                ValorInferior +
+                (ValorSuperior - ValorInferior) * Fraccion,
 
     CalcularEstadisticas =
         (Nombre as text) as record =>
             let
                 Valores =
-                    List.RemoveNulls(
-                        Table.Column(Origen, Nombre)
+                    List.Sort(
+                        List.RemoveNulls(
+                            Table.Column(Origen, Nombre)
+                        ),
+                        Order.Ascending
                     ),
 
                 Cantidad = List.Count(Valores),
 
-                Resultado =
-                    if Cantidad = 0 then
-                        [
-                            INDICADOR = Nombre,
-                            CANTIDAD = 0,
-                            MINIMO = null,
-                            MEDIANA = null,
-                            MAXIMO = null,
-                            PROMEDIO = null
-                        ]
-                    else
-                        [
-                            INDICADOR = Nombre,
-                            CANTIDAD = Cantidad,
-                            MINIMO = List.Min(Valores),
-                            MEDIANA = List.Median(Valores),
-                            MAXIMO = List.Max(Valores),
-                            PROMEDIO = List.Average(Valores)
-                        ]
+                Resultado = [
+                    INDICADOR = Nombre,
+                    CANTIDAD_ENTIDADES = Cantidad,
+                    P75 = CalcularPercentil(Valores, 0.75),
+                    P90 = CalcularPercentil(Valores, 0.90),
+                    P95 = CalcularPercentil(Valores, 0.95)
+                ]
             in
                 Resultado,
 
@@ -60,11 +64,10 @@ let
             Resultado,
             {
                 {"INDICADOR", type text},
-                {"CANTIDAD", Int64.Type},
-                {"MINIMO", type number},
-                {"MEDIANA", type number},
-                {"MAXIMO", type number},
-                {"PROMEDIO", type number}
+                {"CANTIDAD_ENTIDADES", Int64.Type},
+                {"P75", type number},
+                {"P90", type number},
+                {"P95", type number}
             }
         )
 in
