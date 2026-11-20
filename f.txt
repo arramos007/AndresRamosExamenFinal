@@ -1,69 +1,56 @@
-qry02_Participantes
+qry03_Empresas
 
 
 let
     Origen = qry01_RegistrosOriginales,
 
-    AgruparParticipantes =
-        Table.Group(
+    TiposTexto =
+        Table.TransformColumnTypes(
             Origen,
-            {"IDENTIFICACION EMPLEADO (EF)"},
+            {
+                {"RUC SOCIAL EMPLEADOR", type text},
+                {"RAZON SOCIAL EMPLEADOR", type text}
+            }
+        ),
+
+    AgruparEmpresas =
+        Table.Group(
+            TiposTexto,
+            {"RUC SOCIAL EMPLEADOR"},
             {
                 {
-                    "NOMBRE_PARTICIPANTE",
+                    "RAZON_SOCIAL",
                     each List.First(
-                        List.RemoveNulls([#"NOMBRE EMPLEADO (EF)"]),
+                        List.RemoveNulls(
+                            [RAZON SOCIAL EMPLEADOR]
+                        ),
                         null
                     ),
                     type nullable text
-                },
-                {
-                    "INDICADOR_FALLECIMIENTO",
-                    each List.First(
-                        List.RemoveNulls([#"FALL."]),
-                        null
-                    ),
-                    type any
-                },
-                {
-                    "EDAD_PARTICIPANTE",
-                    each List.First(
-                        List.RemoveNulls([EDAD]),
-                        null
-                    ),
-                    type any
-                },
-                {
-                    "CANTIDAD_REGISTROS",
-                    each Table.RowCount(_),
-                    Int64.Type
                 }
             }
         ),
 
-    RenombrarIdentificacion =
+    RenombrarRUC =
         Table.RenameColumns(
-            AgruparParticipantes,
+            AgruparEmpresas,
             {
-                {
-                    "IDENTIFICACION EMPLEADO (EF)",
-                    "IDENTIFICACION_PARTICIPANTE"
-                }
+                {"RUC SOCIAL EMPLEADOR", "RUC_EMPRESA"}
             }
         ),
 
-    OrdenarParticipantes =
+    OrdenarEmpresas =
         Table.Sort(
-            RenombrarIdentificacion,
+            RenombrarRUC,
             {
-                {"IDENTIFICACION_PARTICIPANTE", Order.Ascending}
+                {"RUC_EMPRESA", Order.Ascending}
             }
         ),
 
     AgregarIdentificador =
         Table.AddIndexColumn(
-            OrdenarParticipantes,
-            "ID_PARTICIPANTE",
+            OrdenarEmpresas,
+            "ID_EMPRESA",
             1,
             1,
             Int64.Type
@@ -73,12 +60,9 @@ let
         Table.ReorderColumns(
             AgregarIdentificador,
             {
-                "ID_PARTICIPANTE",
-                "IDENTIFICACION_PARTICIPANTE",
-                "NOMBRE_PARTICIPANTE",
-                "INDICADOR_FALLECIMIENTO",
-                "EDAD_PARTICIPANTE",
-                "CANTIDAD_REGISTROS"
+                "ID_EMPRESA",
+                "RUC_EMPRESA",
+                "RAZON_SOCIAL"
             }
         )
 in
