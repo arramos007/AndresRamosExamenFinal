@@ -1,76 +1,158 @@
-qry27_DetallePerfilesEntidades
+qry28_RutasEconomicasDirectas
 
 
 let
+    // 1. Obtener exclusivamente endosos conciliados
     Origen =
-        qry25_PerfilesPreliminaresEntidades,
+        qry15_EndososConciliados,
 
+    // 2. Seleccionar los datos de cada operación
     SeleccionarColumnas =
         Table.SelectColumns(
             Origen,
             {
-                "RUC_ENTIDAD",
-                "RAZON_SOCIAL",
-                "TIPO_ENTIDAD",
-                "PRESENCIA_MOVIMIENTOS",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "TOTAL_RECIBIDO",
-                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "TOTAL_REALIZADO",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "DIFERENCIA_RECIBIDO_REALIZADO",
-                "RATIO_SALIDA_ENTRADA",
-                "POSIBLE_CONCENTRADORA",
-                "POSIBLE_ACUMULADORA",
-                "POSIBLE_INTERMEDIARIA",
-                "POSIBLE_REDISTRIBUIDORA",
-                "CANTIDAD_PERFILES",
-                "OBSERVACIONES_PERFIL"
+                "ID_OPERACION",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_EMISOR_CARTOLA",
+                "IDENTIFICACION_EMISOR",
+                "NOMBRE_EMISOR",
+                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
+                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
+                "NOMBRE_BENEFICIARIO_CARTOLA",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO",
+                "DIFERENCIA_SEGUNDOS"
             }
         ),
 
-    OrdenarResultados =
-        Table.Sort(
+    // 3. Identificar el origen de la ruta
+    RenombrarEmisor =
+        Table.RenameColumns(
             SeleccionarColumnas,
             {
-                {"CANTIDAD_PERFILES", Order.Descending},
-                {"TOTAL_RECIBIDO", Order.Descending}
+                {
+                    "ID_PARTICIPANTE_EMISOR_CARTOLA",
+                    "ID_PARTICIPANTE_ORIGEN"
+                },
+                {
+                    "IDENTIFICACION_EMISOR",
+                    "IDENTIFICACION_ORIGEN"
+                },
+                {
+                    "NOMBRE_EMISOR",
+                    "NOMBRE_ORIGEN"
+                }
             }
         ),
 
-    AgregarPosicion =
-        Table.AddIndexColumn(
-            OrdenarResultados,
-            "POSICION_ANALISIS",
-            1,
-            1,
+    // 4. Identificar el destino de la ruta
+    RenombrarBeneficiario =
+        Table.RenameColumns(
+            RenombrarEmisor,
+            {
+                {
+                    "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
+                    "ID_PARTICIPANTE_DESTINO"
+                },
+                {
+                    "IDENTIFICACION_BENEFICIARIO_CARTOLA",
+                    "IDENTIFICACION_DESTINO"
+                },
+                {
+                    "NOMBRE_BENEFICIARIO_CARTOLA",
+                    "NOMBRE_DESTINO"
+                }
+            }
+        ),
+
+    // 5. Asignar nivel de ruta directa
+    AgregarNivel =
+        Table.AddColumn(
+            RenombrarBeneficiario,
+            "NUMERO_SALTO",
+            each 1,
             Int64.Type
+        ),
+
+    // 6. Identificar tipo de conexión
+    AgregarTipoRuta =
+        Table.AddColumn(
+            AgregarNivel,
+            "TIPO_RUTA",
+            each
+                if [ID_PARTICIPANTE_ORIGEN] =
+                    [ID_PARTICIPANTE_DESTINO] then
+                    "AUTORREFERENCIA"
+                else
+                    "RUTA_DIRECTA",
+            type text
+        ),
+
+    // 7. Identificar nivel de evidencia
+    AgregarEvidencia =
+        Table.AddColumn(
+            AgregarTipoRuta,
+            "NIVEL_EVIDENCIA",
+            each "CONFIRMADA",
+            type text
+        ),
+
+    // 8. Marcar ciclos directos
+    AgregarCiclo =
+        Table.AddColumn(
+            AgregarEvidencia,
+            "ES_CICLO",
+            each
+                [ID_PARTICIPANTE_ORIGEN] =
+                [ID_PARTICIPANTE_DESTINO],
+            type logical
+        ),
+
+    // 9. Identificador de ruta directa
+    AgregarIDRuta =
+        Table.AddColumn(
+            AgregarCiclo,
+            "ID_RUTA",
+            each [ID_OPERACION],
+            Int64.Type
+        ),
+
+    // 10. Ordenar cronológicamente
+    OrdenarResultados =
+        Table.Sort(
+            AgregarIDRuta,
+            {
+                {"FECHA_DEBITO", Order.Ascending},
+                {"ID_OPERACION", Order.Ascending}
+            }
         ),
 
     Resultado =
         Table.ReorderColumns(
-            AgregarPosicion,
+            OrdenarResultados,
             {
-                "POSICION_ANALISIS",
-                "RUC_ENTIDAD",
-                "RAZON_SOCIAL",
-                "TIPO_ENTIDAD",
-                "PRESENCIA_MOVIMIENTOS",
-                "TOTAL_RECIBIDO",
-                "TOTAL_REALIZADO",
-                "DIFERENCIA_RECIBIDO_REALIZADO",
-                "RATIO_SALIDA_ENTRADA",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "POSIBLE_CONCENTRADORA",
-                "POSIBLE_ACUMULADORA",
-                "POSIBLE_INTERMEDIARIA",
-                "POSIBLE_REDISTRIBUIDORA",
-                "CANTIDAD_PERFILES",
-                "OBSERVACIONES_PERFIL"
+                "ID_RUTA",
+                "ID_OPERACION",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_ORIGEN",
+                "IDENTIFICACION_ORIGEN",
+                "NOMBRE_ORIGEN",
+                "ID_PARTICIPANTE_DESTINO",
+                "IDENTIFICACION_DESTINO",
+                "NOMBRE_DESTINO",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO",
+                "DIFERENCIA_SEGUNDOS",
+                "NUMERO_SALTO",
+                "TIPO_RUTA",
+                "NIVEL_EVIDENCIA",
+                "ES_CICLO"
             }
         )
 in
