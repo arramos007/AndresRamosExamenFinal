@@ -1,227 +1,83 @@
-qry22_ComparacionEntidades
+qry23_DistribucionIndicadoresEntidades
 
 
 let
-    // 1. Obtener los dos rankings
-    Receptoras = qry20_RankingEntidadesReceptoras,
-    Emisoras = qry21_RankingEntidadesEmisoras,
+    Origen = qry22_ComparacionEntidades,
 
-    // 2. Construir universo completo de RUC
-    RUCReceptoras =
-        Table.RenameColumns(
-            Table.SelectColumns(
-                Receptoras,
-                {"RUC_EMPRESA_BENEFICIARIO"}
-            ),
-            {
-                {"RUC_EMPRESA_BENEFICIARIO", "RUC_ENTIDAD"}
-            }
-        ),
+    Indicadores = {
+        "TOTAL_RECIBIDO",
+        "TOTAL_REALIZADO",
+        "DIFERENCIA_RECIBIDO_REALIZADO",
+        "CANTIDAD_ENDOSOS_RECIBIDOS",
+        "CANTIDAD_ENDOSOS_REALIZADOS",
+        "CANTIDAD_RUC_EMISORES_RELACIONADOS",
+        "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
+        "RATIO_SALIDA_ENTRADA"
+    },
 
-    RUCEmisoras =
-        Table.RenameColumns(
-            Table.SelectColumns(
-                Emisoras,
-                {"RUC_EMPRESA_EMISOR"}
-            ),
-            {
-                {"RUC_EMPRESA_EMISOR", "RUC_ENTIDAD"}
-            }
-        ),
+    Estadisticas =
+        List.Transform(
+            Indicadores,
+            (Indicador) =>
+                let
+                    Valores =
+                        List.Sort(
+                            List.RemoveNulls(
+                                Table.Column(Origen, Indicador)
+                            ),
+                            Order.Ascending
+                        ),
 
-    UniversoRUC =
-        Table.Distinct(
-            Table.Combine(
-                {
-                    RUCReceptoras,
-                    RUCEmisoras
-                }
-            )
-        ),
+                    Cantidad = List.Count(Valores),
 
-    // 3. Incorporar información de receptoras
-    UnirReceptoras =
-        Table.NestedJoin(
-            UniversoRUC,
-            {"RUC_ENTIDAD"},
-            Receptoras,
-            {"RUC_EMPRESA_BENEFICIARIO"},
-            "DATOS_RECEPCION",
-            JoinKind.LeftOuter
-        ),
-
-    ExpandirReceptoras =
-        Table.ExpandTableColumn(
-            UnirReceptoras,
-            "DATOS_RECEPCION",
-            {
-                "RAZON_SOCIAL_BENEFICIARIO",
-                "TIPO_ENTIDAD",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "IMPORTE_REFERENCIAL_RECIBIDO",
-                "CANTIDAD_EMPRESAS_EMISORAS",
-                "PRIMERA_FECHA_RECEPCION",
-                "ULTIMA_FECHA_RECEPCION"
-            },
-            {
-                "RAZON_SOCIAL_RECEPTORA",
-                "TIPO_ENTIDAD_RECEPTORA",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "TOTAL_RECIBIDO",
-                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-                "PRIMERA_FECHA_RECEPCION",
-                "ULTIMA_FECHA_RECEPCION"
-            }
-        ),
-
-    // 4. Incorporar información de emisoras
-    UnirEmisoras =
-        Table.NestedJoin(
-            ExpandirReceptoras,
-            {"RUC_ENTIDAD"},
-            Emisoras,
-            {"RUC_EMPRESA_EMISOR"},
-            "DATOS_EMISION",
-            JoinKind.LeftOuter
-        ),
-
-    ExpandirEmisoras =
-        Table.ExpandTableColumn(
-            UnirEmisoras,
-            "DATOS_EMISION",
-            {
-                "RAZON_SOCIAL_EMISOR",
-                "TIPO_ENTIDAD",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "IMPORTE_REFERENCIAL_REALIZADO",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "PRIMERA_FECHA_EMISION",
-                "ULTIMA_FECHA_EMISION"
-            },
-            {
-                "RAZON_SOCIAL_EMISORA",
-                "TIPO_ENTIDAD_EMISORA",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "TOTAL_REALIZADO",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "PRIMERA_FECHA_EMISION",
-                "ULTIMA_FECHA_EMISION"
-            }
-        ),
-
-    // 5. Consolidar razón social y tipo de entidad
-    AgregarRazonSocial =
-        Table.AddColumn(
-            ExpandirEmisoras,
-            "RAZON_SOCIAL",
-            each
-                if [RAZON_SOCIAL_RECEPTORA] <> null then
-                    [RAZON_SOCIAL_RECEPTORA]
-                else
-                    [RAZON_SOCIAL_EMISORA],
-            type nullable text
-        ),
-
-    AgregarTipoEntidad =
-        Table.AddColumn(
-            AgregarRazonSocial,
-            "TIPO_ENTIDAD",
-            each
-                if [TIPO_ENTIDAD_RECEPTORA] <> null then
-                    [TIPO_ENTIDAD_RECEPTORA]
-                else
-                    [TIPO_ENTIDAD_EMISORA],
-            type nullable text
-        ),
-
-    // 6. Reemplazar ausencias de actividad por cero
-    ReemplazarNulos =
-        Table.ReplaceValue(
-            AgregarTipoEntidad,
-            null,
-            0,
-            Replacer.ReplaceValue,
-            {
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "TOTAL_RECIBIDO",
-                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "TOTAL_REALIZADO",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS"
-            }
-        ),
-
-    // 7. Calcular diferencia entre entradas y salidas
-    AgregarDiferencia =
-        Table.AddColumn(
-            ReemplazarNulos,
-            "DIFERENCIA_RECIBIDO_REALIZADO",
-            each [TOTAL_RECIBIDO] - [TOTAL_REALIZADO],
-            type number
-        ),
-
-    // 8. Calcular ratio de salida sobre entrada
-    AgregarRatio =
-        Table.AddColumn(
-            AgregarDiferencia,
-            "RATIO_SALIDA_ENTRADA",
-            each
-                if [TOTAL_RECIBIDO] = 0 then
-                    null
-                else
-                    [TOTAL_REALIZADO] / [TOTAL_RECIBIDO],
-            type nullable number
-        ),
-
-    // 9. Clasificar presencia de movimientos
-    AgregarPerfilMovimiento =
-        Table.AddColumn(
-            AgregarRatio,
-            "PRESENCIA_MOVIMIENTOS",
-            each
-                if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0
-                    and [CANTIDAD_ENDOSOS_REALIZADOS] > 0 then
-                    "RECIBE_Y_REALIZA"
-
-                else if [CANTIDAD_ENDOSOS_RECIBIDOS] > 0 then
-                    "SOLO_RECIBE"
-
-                else
-                    "SOLO_REALIZA",
-            type text
-        ),
-
-    // 10. Ordenar por volumen recibido y realizado
-    OrdenarResultado =
-        Table.Sort(
-            AgregarPerfilMovimiento,
-            {
-                {"TOTAL_RECIBIDO", Order.Descending},
-                {"TOTAL_REALIZADO", Order.Descending}
-            }
+                    Percentil =
+                        (P as number) as nullable number =>
+                            if Cantidad = 0 then
+                                null
+                            else
+                                let
+                                    Posicion = (Cantidad - 1) * P,
+                                    Inferior = Number.RoundDown(Posicion),
+                                    Superior = Number.RoundUp(Posicion),
+                                    Fraccion = Posicion - Inferior,
+                                    ValorInferior = Valores{Inferior},
+                                    ValorSuperior = Valores{Superior}
+                                in
+                                    ValorInferior +
+                                    (ValorSuperior - ValorInferior) * Fraccion
+                in
+                    [
+                        INDICADOR = Indicador,
+                        CANTIDAD = Cantidad,
+                        MINIMO = if Cantidad = 0 then null else List.Min(Valores),
+                        P25 = Percentil(0.25),
+                        MEDIANA = Percentil(0.50),
+                        P75 = Percentil(0.75),
+                        P90 = Percentil(0.90),
+                        P95 = Percentil(0.95),
+                        MAXIMO = if Cantidad = 0 then null else List.Max(Valores),
+                        PROMEDIO = if Cantidad = 0 then null else List.Average(Valores)
+                    ]
         ),
 
     Resultado =
-        Table.ReorderColumns(
-            OrdenarResultado,
+        Table.FromRecords(Estadisticas),
+
+    Tipos =
+        Table.TransformColumnTypes(
+            Resultado,
             {
-                "RUC_ENTIDAD",
-                "RAZON_SOCIAL",
-                "TIPO_ENTIDAD",
-                "PRESENCIA_MOVIMIENTOS",
-                "CANTIDAD_ENDOSOS_RECIBIDOS",
-                "TOTAL_RECIBIDO",
-                "CANTIDAD_RUC_EMISORES_RELACIONADOS",
-                "CANTIDAD_ENDOSOS_REALIZADOS",
-                "TOTAL_REALIZADO",
-                "CANTIDAD_RUC_BENEFICIARIOS_RELACIONADOS",
-                "DIFERENCIA_RECIBIDO_REALIZADO",
-                "RATIO_SALIDA_ENTRADA",
-                "PRIMERA_FECHA_RECEPCION",
-                "ULTIMA_FECHA_RECEPCION",
-                "PRIMERA_FECHA_EMISION",
-                "ULTIMA_FECHA_EMISION"
+                {"INDICADOR", type text},
+                {"CANTIDAD", Int64.Type},
+                {"MINIMO", type number},
+                {"P25", type number},
+                {"MEDIANA", type number},
+                {"P75", type number},
+                {"P90", type number},
+                {"P95", type number},
+                {"MAXIMO", type number},
+                {"PROMEDIO", type number}
             }
         )
 in
-    Resultado
+    Tipos
