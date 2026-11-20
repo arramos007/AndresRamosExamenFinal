@@ -1,11 +1,9 @@
-qry11_CandidatosConciliacion
-
 
 let
-    // 1. Preparar los débitos
+    // 1. Preparar débitos
     DebitosOrigen = qry08_EndososDebito,
 
-    DebitosSeleccionados =
+    DebitosBase =
         Table.SelectColumns(
             DebitosOrigen,
             {
@@ -18,7 +16,7 @@ let
 
     DebitosRenombrados =
         Table.RenameColumns(
-            DebitosSeleccionados,
+            DebitosBase,
             {
                 {"ID_REGISTRO_ORIGEN", "ID_REGISTRO_DEBITO"},
                 {
@@ -30,7 +28,7 @@ let
             }
         ),
 
-    DebitosNormalizados =
+    Debitos =
         Table.AddColumn(
             DebitosRenombrados,
             "ID_COMPARACION",
@@ -44,10 +42,10 @@ let
             type nullable text
         ),
 
-    // 2. Preparar los créditos
+    // 2. Preparar créditos
     CreditosOrigen = qry09_EndososCredito,
 
-    CreditosSeleccionados =
+    CreditosBase =
         Table.SelectColumns(
             CreditosOrigen,
             {
@@ -60,7 +58,7 @@ let
 
     CreditosRenombrados =
         Table.RenameColumns(
-            CreditosSeleccionados,
+            CreditosBase,
             {
                 {"ID_REGISTRO_ORIGEN", "ID_REGISTRO_CREDITO"},
                 {
@@ -72,7 +70,7 @@ let
             }
         ),
 
-    CreditosNormalizados =
+    Creditos =
         Table.AddColumn(
             CreditosRenombrados,
             "ID_COMPARACION",
@@ -86,44 +84,92 @@ let
             type nullable text
         ),
 
-    // 3. Buscar coincidencias por identificación e importe
-    UnirPorIdentificacionEImporte =
-        Table.NestedJoin(
-            DebitosNormalizados,
-            {"ID_COMPARACION", "MONTO_DEBITO"},
-            CreditosNormalizados,
+    // 3. Agrupar créditos por identificación e importe
+    CreditosValidos =
+        Table.SelectRows(
+            Creditos,
+            each
+                [ID_COMPARACION] <> null
+                and [MONTO_CREDITO] <> null
+                and [FECHA_CREDITO] <> null
+        ),
+
+    AgruparCreditos =
+        Table.Group(
+            CreditosValidos,
             {"ID_COMPARACION", "MONTO_CREDITO"},
-            "CREDITOS_POR_CLAVE",
+            {
+                {
+                    "REGISTROS_CREDITO",
+                    each Table.SelectColumns(
+                        _,
+                        {
+                            "ID_REGISTRO_CREDITO",
+                            "ID_TITULAR_CREDITO",
+                            "FECHA_CREDITO"
+                        }
+                    ),
+                    type table
+                }
+            }
+        ),
+
+    // 4. Buscar grupos correspondientes a cada débito
+    UnirGrupos =
+        Table.NestedJoin(
+            Debitos,
+            {
+                "ID_COMPARACION",
+                "MONTO_DEBITO"
+            },
+            AgruparCreditos,
+            {
+                "ID_COMPARACION",
+                "MONTO_CREDITO"
+            },
+            "GRUPO_CREDITOS",
             JoinKind.LeftOuter
         ),
 
-    // 4. Aplicar tolerancia temporal de tres segundos
-    FiltrarCandidatosTemporales =
+    // 5. Filtrar por diferencia máxima de tres segundos
+    BuscarCoincidencias =
         Table.AddColumn(
-            UnirPorIdentificacionEImporte,
+            UnirGrupos,
             "CREDITOS_CANDIDATOS",
             each
                 let
                     FechaDebito = [FECHA_DEBITO],
-                    Identificacion = [ID_COMPARACION],
-                    Importe = [MONTO_DEBITO],
+
+                    Grupos =
+                        [GRUPO_CREDITOS],
+
+                    Registros =
+                        if Table.IsEmpty(Grupos) then
+                            #table(
+                                {
+                                    "ID_REGISTRO_CREDITO",
+                                    "ID_TITULAR_CREDITO",
+                                    "FECHA_CREDITO"
+                                },
+                                {}
+                            )
+                        else
+                            Grupos{0}[REGISTROS_CREDITO],
 
                     Coincidencias =
-                        Table.SelectRows(
-                            [CREDITOS_POR_CLAVE],
-                            (Credito) =>
-                                Identificacion <> null
-                                and Importe <> null
-                                and FechaDebito <> null
-                                and Credito[ID_COMPARACION] <> null
-                                and Credito[FECHA_CREDITO] <> null
-                                and Number.Abs(
-                                    Duration.TotalSeconds(
-                                        Credito[FECHA_CREDITO]
-                                        - FechaDebito
-                                    )
-                                ) <= 3
-                        ),
+                        if FechaDebito = null then
+                            Table.FirstN(Registros, 0)
+                        else
+                            Table.SelectRows(
+                                Registros,
+                                (Credito) =>
+                                    Number.Abs(
+                                        Duration.TotalSeconds(
+                                            Credito[FECHA_CREDITO]
+                                            - FechaDebito
+                                        )
+                                    ) <= 3
+                            ),
 
                     AgregarDiferencia =
                         Table.AddColumn(
@@ -142,16 +188,16 @@ let
             type table
         ),
 
-    // 5. Contar candidatos por débito
+    // 6. Contar candidatos
     ContarCandidatos =
         Table.AddColumn(
-            FiltrarCandidatosTemporales,
+            BuscarCoincidencias,
             "CANTIDAD_CANDIDATOS_DEBITO",
             each Table.RowCount([CREDITOS_CANDIDATOS]),
             Int64.Type
         ),
 
-    // 6. Expandir las coincidencias
+    // 7. Expandir únicamente los candidatos
     ExpandirCandidatos =
         Table.ExpandTableColumn(
             ContarCandidatos,
@@ -160,133 +206,132 @@ let
                 "ID_REGISTRO_CREDITO",
                 "ID_TITULAR_CREDITO",
                 "FECHA_CREDITO",
-                "MONTO_CREDITO",
                 "DIFERENCIA_SEGUNDOS"
             },
             {
                 "ID_REGISTRO_CREDITO",
                 "ID_TITULAR_CREDITO",
                 "FECHA_CREDITO",
-                "MONTO_CREDITO",
                 "DIFERENCIA_SEGUNDOS"
             }
         ),
 
-    // 7. Conservar únicamente los candidatos encontrados
-    Candidatos =
-        Table.SelectRows(
+    LimpiarGrupos =
+        Table.RemoveColumns(
             ExpandirCandidatos,
-            each [CANTIDAD_CANDIDATOS_DEBITO] > 0
+            {"GRUPO_CREDITOS", "ID_COMPARACION"}
         ),
 
-    CandidatosTipo =
+    // 8. Clasificar resultados de débitos
+    ClasificarDebitos =
         Table.AddColumn(
-            Candidatos,
+            LimpiarGrupos,
             "TIPO_REGISTRO",
-            each "CANDIDATO",
+            each
+                if [CANTIDAD_CANDIDATOS_DEBITO] = 0 then
+                    "DEBITO_SIN_CANDIDATO"
+                else
+                    "CANDIDATO",
             type text
         ),
 
-    // 8. Débitos sin candidatos
-    DebitosSinCandidato =
-        Table.SelectRows(
-            ExpandirCandidatos,
-            each [CANTIDAD_CANDIDATOS_DEBITO] = 0
-        ),
-
-    DebitosSinCredito =
-        Table.AddColumn(
-            DebitosSinCandidato,
-            "TIPO_REGISTRO",
-            each "DEBITO_SIN_CANDIDATO",
-            type text
-        ),
-
-    // 9. Créditos que no aparecen en ningún candidato
-    IDsCreditosConCandidato =
+    // 9. Identificar créditos con al menos un candidato
+    IDsCreditosCandidatos =
         Table.Distinct(
             Table.SelectColumns(
-                Candidatos,
+                Table.SelectRows(
+                    ClasificarDebitos,
+                    each [ID_REGISTRO_CREDITO] <> null
+                ),
                 {"ID_REGISTRO_CREDITO"}
             )
         ),
 
     CreditosSinCandidato =
         Table.NestedJoin(
-            CreditosNormalizados,
+            Creditos,
             {"ID_REGISTRO_CREDITO"},
-            IDsCreditosConCandidato,
+            IDsCreditosCandidatos,
             {"ID_REGISTRO_CREDITO"},
             "COINCIDENCIA",
             JoinKind.LeftAnti
         ),
 
-    CreditosSinDebitoBase =
+    CreditosPendientesBase =
         Table.RemoveColumns(
             CreditosSinCandidato,
             {"COINCIDENCIA", "ID_COMPARACION"}
         ),
 
-    CreditosSinDebito =
+    // 10. Completar estructura de créditos pendientes
+    CreditosPendientes1 =
         Table.AddColumn(
-            CreditosSinDebitoBase,
-            "TIPO_REGISTRO",
-            each "CREDITO_SIN_CANDIDATO",
-            type text
+            CreditosPendientesBase,
+            "ID_REGISTRO_DEBITO",
+            each null,
+            type nullable number
         ),
 
-    CreditosConColumnasDebito =
+    CreditosPendientes2 =
         Table.AddColumn(
-            Table.AddColumn(
-                Table.AddColumn(
-                    Table.AddColumn(
-                        CreditosSinDebito,
-                        "ID_REGISTRO_DEBITO",
-                        each null,
-                        type nullable number
-                    ),
-                    "ID_BENEFICIARIO_DEBITO",
-                    each null,
-                    type nullable text
-                ),
-                "FECHA_DEBITO",
-                each null,
-                type nullable datetime
-            ),
+            CreditosPendientes1,
+            "ID_BENEFICIARIO_DEBITO",
+            each null,
+            type nullable text
+        ),
+
+    CreditosPendientes3 =
+        Table.AddColumn(
+            CreditosPendientes2,
+            "FECHA_DEBITO",
+            each null,
+            type nullable datetime
+        ),
+
+    CreditosPendientes4 =
+        Table.AddColumn(
+            CreditosPendientes3,
             "MONTO_DEBITO",
             each null,
             type nullable number
         ),
 
-    CreditosConDiferencia =
+    CreditosPendientes5 =
         Table.AddColumn(
-            CreditosConColumnasDebito,
+            CreditosPendientes4,
             "DIFERENCIA_SEGUNDOS",
             each null,
             type nullable number
         ),
 
-    CreditosConCantidad =
+    CreditosPendientes6 =
         Table.AddColumn(
-            CreditosConDiferencia,
+            CreditosPendientes5,
             "CANTIDAD_CANDIDATOS_DEBITO",
             each 0,
             Int64.Type
         ),
 
-    // 10. Unificar resultados
-    UnificarResultados =
+    CreditosPendientes7 =
+        Table.AddColumn(
+            CreditosPendientes6,
+            "TIPO_REGISTRO",
+            each "CREDITO_SIN_CANDIDATO",
+            type text
+        ),
+
+    // 11. Unificar resultados
+    Resultados =
         Table.Combine(
             {
-                CandidatosTipo,
-                DebitosSinCredito,
-                CreditosConCantidad
+                ClasificarDebitos,
+                CreditosPendientes7
             }
         ),
 
-    SeleccionarResultado =
+    SeleccionarColumnas =
         Table.SelectColumns(
-            UnificarResultados,
+            Resultados,
             {
                 "TIPO_REGISTRO",
                 "ID_REGISTRO_DEBITO",
@@ -300,15 +345,6 @@ let
                 "DIFERENCIA_SEGUNDOS",
                 "CANTIDAD_CANDIDATOS_DEBITO"
             }
-        ),
-
-    Resultado =
-        Table.Sort(
-            SeleccionarResultado,
-            {
-                {"ID_REGISTRO_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_CREDITO", Order.Ascending}
-            }
         )
 in
-    Resultado
+    SeleccionarColumnas
