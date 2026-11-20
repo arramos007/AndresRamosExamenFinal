@@ -1,24 +1,85 @@
-qry01_RegistrosOriginales
+qry02_Participantes
 
 
 let
-    Origen = qryBase,
+    Origen = qry01_RegistrosOriginales,
 
-    ColumnasOriginales = Table.ColumnNames(Origen),
-
-    ValidarCantidadCampos =
-        if List.Count(ColumnasOriginales) <> 23 then
-            error "La fuente debe contener exactamente 23 campos."
-        else
+    AgruparParticipantes =
+        Table.Group(
             Origen,
+            {"IDENTIFICACION EMPLEADO (EF)"},
+            {
+                {
+                    "NOMBRE_PARTICIPANTE",
+                    each List.First(
+                        List.RemoveNulls([#"NOMBRE EMPLEADO (EF)"]),
+                        null
+                    ),
+                    type nullable text
+                },
+                {
+                    "INDICADOR_FALLECIMIENTO",
+                    each List.First(
+                        List.RemoveNulls([#"FALL."]),
+                        null
+                    ),
+                    type any
+                },
+                {
+                    "EDAD_PARTICIPANTE",
+                    each List.First(
+                        List.RemoveNulls([EDAD]),
+                        null
+                    ),
+                    type any
+                },
+                {
+                    "CANTIDAD_REGISTROS",
+                    each Table.RowCount(_),
+                    Int64.Type
+                }
+            }
+        ),
+
+    RenombrarIdentificacion =
+        Table.RenameColumns(
+            AgruparParticipantes,
+            {
+                {
+                    "IDENTIFICACION EMPLEADO (EF)",
+                    "IDENTIFICACION_PARTICIPANTE"
+                }
+            }
+        ),
+
+    OrdenarParticipantes =
+        Table.Sort(
+            RenombrarIdentificacion,
+            {
+                {"IDENTIFICACION_PARTICIPANTE", Order.Ascending}
+            }
+        ),
 
     AgregarIdentificador =
         Table.AddIndexColumn(
-            ValidarCantidadCampos,
-            "ID_REGISTRO_ORIGEN",
+            OrdenarParticipantes,
+            "ID_PARTICIPANTE",
             1,
             1,
             Int64.Type
+        ),
+
+    Resultado =
+        Table.ReorderColumns(
+            AgregarIdentificador,
+            {
+                "ID_PARTICIPANTE",
+                "IDENTIFICACION_PARTICIPANTE",
+                "NOMBRE_PARTICIPANTE",
+                "INDICADOR_FALLECIMIENTO",
+                "EDAD_PARTICIPANTE",
+                "CANTIDAD_REGISTROS"
+            }
         )
 in
-    AgregarIdentificador
+    Resultado
