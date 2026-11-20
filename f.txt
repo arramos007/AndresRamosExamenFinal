@@ -1,170 +1,125 @@
+qry29_ValidacionRutasDirectas
+
 
 let
-    // 1. Origen: operaciones conciliadas
     Origen =
-        qry15_EndososConciliados,
+        qry28_RutasEconomicasDirectas,
 
-    // 2. Seleccionar columnas existentes
-    SeleccionarColumnas =
-        Table.SelectColumns(
-            Origen,
-            {
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "ID_PARTICIPANTE_EMISOR_CARTOLA",
-                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
-                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
-                "IDENTIFICACION_EMISOR",
-                "NOMBRE_EMISOR",
-                "IDENTIFICACION_BENEFICIARIO",
-                "NOMBRE_BENEFICIARIO",
-                "MARCA_TRAMA_EMISOR",
-                "MARCA_TRAMA_BENEFICIARIO",
-                "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
-                "IDENTIFICACION_BENEFICIARIO_CARTOLA",
-                "NOMBRE_BENEFICIARIO_CARTOLA",
-                "INST_DEBITO",
-                "TIPO_OPERACION"
-            }
+    TotalFilas =
+        Table.RowCount(Origen),
+
+    DebitosDistintos =
+        List.Count(
+            List.Distinct(
+                List.RemoveNulls(
+                    Origen[ID_REGISTRO_DEBITO]
+                )
+            )
         ),
 
-    // 3. Identificar origen de la ruta
-    RenombrarOrigen =
-        Table.RenameColumns(
-            SeleccionarColumnas,
-            {
-                {
-                    "ID_PARTICIPANTE_EMISOR_CARTOLA",
-                    "ID_PARTICIPANTE_ORIGEN"
-                },
-                {
-                    "IDENTIFICACION_EMISOR",
-                    "IDENTIFICACION_ORIGEN"
-                },
-                {
-                    "NOMBRE_EMISOR",
-                    "NOMBRE_ORIGEN"
-                }
-            }
+    CreditosDistintos =
+        List.Count(
+            List.Distinct(
+                List.RemoveNulls(
+                    Origen[ID_REGISTRO_CREDITO]
+                )
+            )
         ),
 
-    // 4. Identificar destino de la ruta
-    RenombrarDestino =
-        Table.RenameColumns(
-            RenombrarOrigen,
-            {
-                {
-                    "ID_PARTICIPANTE_BENEFICIARIO_CARTOLA",
-                    "ID_PARTICIPANTE_DESTINO"
-                },
-                {
-                    "IDENTIFICACION_BENEFICIARIO_CARTOLA",
-                    "IDENTIFICACION_DESTINO"
-                },
-                {
-                    "NOMBRE_BENEFICIARIO_CARTOLA",
-                    "NOMBRE_DESTINO"
-                }
-            }
+    DebitosDuplicados =
+        TotalFilas - DebitosDistintos,
+
+    CreditosDuplicados =
+        TotalFilas - CreditosDistintos,
+
+    ImportesIguales =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [MONTO_DEBITO] = [MONTO_CREDITO]
+            )
         ),
 
-    // 5. Identificador técnico de ruta
-    AgregarIDRuta =
+    OrigenIdentificado =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_ORIGEN] <> null
+            )
+        ),
+
+    DestinoIdentificado =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_DESTINO] <> null
+            )
+        ),
+
+    Autorreferencias =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ES_CICLO] = true
+            )
+        ),
+
+    Validaciones = {
+        [
+            VALIDACION = "TOTAL_OPERACIONES",
+            RESULTADO = TotalFilas,
+            ESPERADO = 1338
+        ],
+        [
+            VALIDACION = "DEBITOS_DISTINTOS",
+            RESULTADO = DebitosDistintos,
+            ESPERADO = TotalFilas
+        ],
+        [
+            VALIDACION = "CREDITOS_DISTINTOS",
+            RESULTADO = CreditosDistintos,
+            ESPERADO = TotalFilas
+        ],
+        [
+            VALIDACION = "DEBITOS_DUPLICADOS",
+            RESULTADO = DebitosDuplicados,
+            ESPERADO = 0
+        ],
+        [
+            VALIDACION = "CREDITOS_DUPLICADOS",
+            RESULTADO = CreditosDuplicados,
+            ESPERADO = 0
+        ],
+        [
+            VALIDACION = "IMPORTES_IGUALES",
+            RESULTADO = ImportesIguales,
+            ESPERADO = TotalFilas
+        ],
+        [
+            VALIDACION = "ORIGEN_IDENTIFICADO",
+            RESULTADO = OrigenIdentificado,
+            ESPERADO = TotalFilas
+        ],
+        [
+            VALIDACION = "DESTINO_IDENTIFICADO",
+            RESULTADO = DestinoIdentificado,
+            ESPERADO = TotalFilas
+        }
+    },
+
+    TablaValidaciones =
+        Table.FromRecords(Validaciones),
+
+    AgregarEstado =
         Table.AddColumn(
-            RenombrarDestino,
-            "ID_RUTA",
-            each [ID_REGISTRO_DEBITO],
-            Int64.Type
-        ),
-
-    // 6. Número de salto
-    AgregarNumeroSalto =
-        Table.AddColumn(
-            AgregarIDRuta,
-            "NUMERO_SALTO",
-            each 1,
-            Int64.Type
-        ),
-
-    // 7. Clasificar tipo de conexión
-    AgregarTipoRuta =
-        Table.AddColumn(
-            AgregarNumeroSalto,
-            "TIPO_RUTA",
+            TablaValidaciones,
+            "ESTADO",
             each
-                if [ID_PARTICIPANTE_ORIGEN] =
-                    [ID_PARTICIPANTE_DESTINO] then
-                    "AUTORREFERENCIA"
+                if [RESULTADO] = [ESPERADO] then
+                    "CORRECTO"
                 else
-                    "RUTA_DIRECTA",
+                    "REVISAR",
             type text
-        ),
-
-    // 8. Nivel de evidencia
-    AgregarEvidencia =
-        Table.AddColumn(
-            AgregarTipoRuta,
-            "NIVEL_EVIDENCIA",
-            each "CONFIRMADA",
-            type text
-        ),
-
-    // 9. Identificar autorreferencias
-    AgregarCiclo =
-        Table.AddColumn(
-            AgregarEvidencia,
-            "ES_CICLO",
-            each
-                [ID_PARTICIPANTE_ORIGEN] =
-                [ID_PARTICIPANTE_DESTINO],
-            type logical
-        ),
-
-    // 10. Orden cronológico
-    OrdenarResultados =
-        Table.Sort(
-            AgregarCiclo,
-            {
-                {"FECHA_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_DEBITO", Order.Ascending}
-            }
-        ),
-
-    // 11. Orden final de columnas
-    Resultado =
-        Table.ReorderColumns(
-            OrdenarResultados,
-            {
-                "ID_RUTA",
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_ORIGEN",
-                "IDENTIFICACION_ORIGEN",
-                "NOMBRE_ORIGEN",
-                "ID_PARTICIPANTE_DESTINO",
-                "IDENTIFICACION_DESTINO",
-                "NOMBRE_DESTINO",
-                "ID_PARTICIPANTE_EMISOR_REGISTRADO",
-                "ID_PARTICIPANTE_BENEFICIARIO_REGISTRADO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "MARCA_TRAMA_EMISOR",
-                "MARCA_TRAMA_BENEFICIARIO",
-                "INST_DEBITO",
-                "TIPO_OPERACION",
-                "NUMERO_SALTO",
-                "TIPO_RUTA",
-                "NIVEL_EVIDENCIA",
-                "ES_CICLO"
-            }
         )
 in
-    Resultado
+    AgregarEstado
