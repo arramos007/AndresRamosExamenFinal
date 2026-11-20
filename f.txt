@@ -1,5 +1,3 @@
-qry06_MovimientosConParticipantes
-
 
 let
     Origen = qry05_MovimientosEconomicos,
@@ -20,6 +18,24 @@ let
             "PARTICIPANTE_TITULAR",
             {"ID_PARTICIPANTE"},
             {"ID_PARTICIPANTE_TITULAR"}
+        ),
+
+    UnirParticipanteEmisor =
+        Table.NestedJoin(
+            ExpandirParticipanteTitular,
+            {"IDENTIFICACION DEL EMISOR / ENDOSANTE"},
+            qry02_Participantes,
+            {"IDENTIFICACION_PARTICIPANTE"},
+            "PARTICIPANTE_EMISOR",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirParticipanteEmisor =
+        Table.ExpandTableColumn(
+            UnirParticipanteEmisor,
+            "PARTICIPANTE_EMISOR",
+            {"ID_PARTICIPANTE"},
+            {"ID_PARTICIPANTE_EMISOR"}
         )
 in
-    ExpandirParticipanteTitular
+    ExpandirParticipanteEmisor
