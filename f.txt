@@ -1,5 +1,3 @@
-qry14_ResumenConciliacion
-
 
 let
     Origen = qry13_ConciliacionEndosos,
@@ -17,10 +15,16 @@ let
                 {
                     "DEBITOS_DISTINTOS",
                     each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_REGISTRO_DEBITO]
+                        Table.RowCount(
+                            Table.Distinct(
+                                Table.SelectRows(
+                                    Table.SelectColumns(
+                                        _,
+                                        {
+                                            "ID_REGISTRO_DEBITO"
+                                        }
+                                    ),
+                                    each [ID_REGISTRO_DEBITO] <> null
                                 )
                             )
                         ),
@@ -29,10 +33,16 @@ let
                 {
                     "CREDITOS_DISTINTOS",
                     each
-                        List.Count(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [ID_REGISTRO_CREDITO]
+                        Table.RowCount(
+                            Table.Distinct(
+                                Table.SelectRows(
+                                    Table.SelectColumns(
+                                        _,
+                                        {
+                                            "ID_REGISTRO_CREDITO"
+                                        }
+                                    ),
+                                    each [ID_REGISTRO_CREDITO] <> null
                                 )
                             )
                         ),
@@ -41,25 +51,57 @@ let
                 {
                     "IMPORTE_DEBITOS",
                     each
-                        List.Sum(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [MONTO_DEBITO]
+                        let
+                            Registros =
+                                Table.Distinct(
+                                    Table.SelectRows(
+                                        Table.SelectColumns(
+                                            _,
+                                            {
+                                                "ID_REGISTRO_DEBITO",
+                                                "MONTO_DEBITO"
+                                            }
+                                        ),
+                                        each
+                                            [ID_REGISTRO_DEBITO] <> null
+                                    ),
+                                    {"ID_REGISTRO_DEBITO"}
                                 )
-                            )
-                        ),
+                        in
+                            if Table.IsEmpty(Registros) then
+                                null
+                            else
+                                List.Sum(
+                                    Registros[MONTO_DEBITO]
+                                ),
                     type nullable number
                 },
                 {
                     "IMPORTE_CREDITOS",
                     each
-                        List.Sum(
-                            List.Distinct(
-                                List.RemoveNulls(
-                                    [MONTO_CREDITO]
+                        let
+                            Registros =
+                                Table.Distinct(
+                                    Table.SelectRows(
+                                        Table.SelectColumns(
+                                            _,
+                                            {
+                                                "ID_REGISTRO_CREDITO",
+                                                "MONTO_CREDITO"
+                                            }
+                                        ),
+                                        each
+                                            [ID_REGISTRO_CREDITO] <> null
+                                    ),
+                                    {"ID_REGISTRO_CREDITO"}
                                 )
-                            )
-                        ),
+                        in
+                            if Table.IsEmpty(Registros) then
+                                null
+                            else
+                                List.Sum(
+                                    Registros[MONTO_CREDITO]
+                                ),
                     type nullable number
                 }
             }
