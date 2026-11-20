@@ -1,56 +1,84 @@
-qry03_Empresas
+qry04_RelacionesEmpresariales
 
 
 let
     Origen = qry01_RegistrosOriginales,
 
-    TiposTexto =
-        Table.TransformColumnTypes(
+    SeleccionarColumnas =
+        Table.SelectColumns(
             Origen,
             {
-                {"RUC SOCIAL EMPLEADOR", type text},
-                {"RAZON SOCIAL EMPLEADOR", type text}
+                "IDENTIFICACION EMPLEADO (EF)",
+                "RUC SOCIAL EMPLEADOR",
+                "REL",
+                "RELAC."
             }
         ),
 
-    AgruparEmpresas =
-        Table.Group(
-            TiposTexto,
+    RelacionesUnicas =
+        Table.Distinct(
+            SeleccionarColumnas
+        ),
+
+    UnirParticipantes =
+        Table.NestedJoin(
+            RelacionesUnicas,
+            {"IDENTIFICACION EMPLEADO (EF)"},
+            qry02_Participantes,
+            {"IDENTIFICACION_PARTICIPANTE"},
+            "PARTICIPANTE",
+            JoinKind.LeftOuter
+        ),
+
+    ExpandirParticipantes =
+        Table.ExpandTableColumn(
+            UnirParticipantes,
+            "PARTICIPANTE",
+            {"ID_PARTICIPANTE"},
+            {"ID_PARTICIPANTE"}
+        ),
+
+    UnirEmpresas =
+        Table.NestedJoin(
+            ExpandirParticipantes,
             {"RUC SOCIAL EMPLEADOR"},
-            {
-                {
-                    "RAZON_SOCIAL",
-                    each List.First(
-                        List.RemoveNulls(
-                            [RAZON SOCIAL EMPLEADOR]
-                        ),
-                        null
-                    ),
-                    type nullable text
-                }
-            }
+            qry03_Empresas,
+            {"RUC_EMPRESA"},
+            "EMPRESA",
+            JoinKind.LeftOuter
         ),
 
-    RenombrarRUC =
+    ExpandirEmpresas =
+        Table.ExpandTableColumn(
+            UnirEmpresas,
+            "EMPRESA",
+            {"ID_EMPRESA"},
+            {"ID_EMPRESA"}
+        ),
+
+    RenombrarColumnas =
         Table.RenameColumns(
-            AgruparEmpresas,
+            ExpandirEmpresas,
             {
-                {"RUC SOCIAL EMPLEADOR", "RUC_EMPRESA"}
+                {"REL", "TIPO_RELACION"},
+                {"RELAC.", "RELACIONES_EMPLEADO"}
             }
         ),
 
-    OrdenarEmpresas =
+    OrdenarRelaciones =
         Table.Sort(
-            RenombrarRUC,
+            RenombrarColumnas,
             {
-                {"RUC_EMPRESA", Order.Ascending}
+                {"ID_PARTICIPANTE", Order.Ascending},
+                {"ID_EMPRESA", Order.Ascending},
+                {"TIPO_RELACION", Order.Ascending}
             }
         ),
 
     AgregarIdentificador =
         Table.AddIndexColumn(
-            OrdenarEmpresas,
-            "ID_EMPRESA",
+            OrdenarRelaciones,
+            "ID_RELACION",
             1,
             1,
             Int64.Type
@@ -60,9 +88,11 @@ let
         Table.ReorderColumns(
             AgregarIdentificador,
             {
+                "ID_RELACION",
+                "ID_PARTICIPANTE",
                 "ID_EMPRESA",
-                "RUC_EMPRESA",
-                "RAZON_SOCIAL"
+                "TIPO_RELACION",
+                "RELACIONES_EMPLEADO"
             }
         )
 in
