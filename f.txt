@@ -1,172 +1,42 @@
+qry40_PruebaExpansionNivel1
 
-(Estado as table, Indice as table) as list =>
+
 let
-    Rutas =
-        Table.ToRecords(
-            Table.SelectRows(
-                Estado,
-                each [ESTADO_RUTA] = "ABIERTA"
-            )
+    // Tomar una muestra de 10 rutas iniciales
+    EstadoPrueba =
+        Table.FirstN(
+            qry38_EstadoInicialRutas,
+            10
         ),
 
-    ExpandirRuta =
-        (Padre as record) as list =>
-        let
-            ParticipanteActual =
-                Padre[ID_PARTICIPANTE_ACTUAL],
+    // Ejecutar la expansión de un nivel
+    NuevasRutas =
+        fnExpandirUnNivel(
+            EstadoPrueba,
+            qry34_IndiceConexionesPorParticipante
+        ),
 
-            FechaAnterior =
-                Padre[FECHA_ULTIMO_MOVIMIENTO],
-
-            OperacionesAnteriores =
-                Padre[OPERACIONES_RECORRIDAS],
-
-            ParticipantesAnteriores =
-                Padre[PARTICIPANTES_VISITADOS],
-
-            BuscarIndice =
-                Table.SelectRows(
-                    Indice,
-                    each
-                        [ID_PARTICIPANTE_ORIGEN]
-                        = ParticipanteActual
-                ),
-
-            Resultado =
-                if Table.IsEmpty(BuscarIndice) then
-                    {}
-                else
-                    let
-                        Salidas =
-                            BuscarIndice{0}[CONEXIONES_SALIDA],
-
-                        Candidatos =
-                            Table.SelectRows(
-                                Salidas,
-                                each
-                                    [FECHA_DEBITO] >= FechaAnterior
-                                    and not List.Contains(
-                                        OperacionesAnteriores,
-                                        [ID_REGISTRO_DEBITO]
-                                    )
-                            ),
-
-                        Registros =
-                            Table.ToRecords(Candidatos),
-
-                        NuevasRutas =
-                            List.Transform(
-                                Registros,
-                                (Conexion as record) =>
-                                    let
-                                        Destino =
-                                            Conexion[ID_PARTICIPANTE_DESTINO],
-
-                                        FechaIgual =
-                                            Conexion[FECHA_DEBITO]
-                                            = FechaAnterior,
-
-                                        Ciclo =
-                                            List.Contains(
-                                                ParticipantesAnteriores,
-                                                Destino
-                                            ),
-
-                                        EstadoNuevaRuta =
-                                            if Ciclo then
-                                                "CICLO_DETECTADO"
-                                            else if FechaIgual then
-                                                "ORDEN_TEMPORAL_AMBIGUO"
-                                            else
-                                                "ABIERTA",
-
-                                        Evidencia =
-                                            if Ciclo or FechaIgual then
-                                                "CONEXION_OBSERVADA"
-                                            else if
-                                                Padre[NIVEL_EVIDENCIA_RUTA]
-                                                = "CONFIRMADA"
-                                                and Conexion[NIVEL_EVIDENCIA]
-                                                = "CONFIRMADA"
-                                            then
-                                                "CONFIRMADA"
-                                            else
-                                                "PARCIALMENTE_TRAZABLE",
-
-                                        NuevaRuta = [
-                                            ID_RUTA_ACTUAL =
-                                                Padre[ID_RUTA_ACTUAL]
-                                                & ">"
-                                                & Text.From(
-                                                    Conexion[ID_REGISTRO_DEBITO]
-                                                ),
-
-                                            ID_RUTA_PADRE =
-                                                Padre[ID_RUTA_ACTUAL],
-
-                                            ID_REGISTRO_DEBITO =
-                                                Conexion[ID_REGISTRO_DEBITO],
-
-                                            ID_REGISTRO_CREDITO =
-                                                Conexion[ID_REGISTRO_CREDITO],
-
-                                            ID_PARTICIPANTE_INICIAL =
-                                                Padre[ID_PARTICIPANTE_INICIAL],
-
-                                            ID_PARTICIPANTE_ACTUAL =
-                                                Destino,
-
-                                            NUMERO_SALTO =
-                                                Padre[NUMERO_SALTO] + 1,
-
-                                            PARTICIPANTES_VISITADOS =
-                                                ParticipantesAnteriores
-                                                & {Destino},
-
-                                            OPERACIONES_RECORRIDAS =
-                                                OperacionesAnteriores
-                                                & {
-                                                    Conexion[ID_REGISTRO_DEBITO]
-                                                },
-
-                                            FECHA_DEBITO =
-                                                Conexion[FECHA_DEBITO],
-
-                                            FECHA_CREDITO =
-                                                Conexion[FECHA_CREDITO],
-
-                                            FECHA_ULTIMO_MOVIMIENTO =
-                                                Conexion[FECHA_CREDITO],
-
-                                            MONTO_DEBITO =
-                                                Conexion[MONTO_DEBITO],
-
-                                            MONTO_CREDITO =
-                                                Conexion[MONTO_CREDITO],
-
-                                            ESTADO_RUTA =
-                                                EstadoNuevaRuta,
-
-                                            ES_CICLO =
-                                                Ciclo,
-
-                                            NIVEL_EVIDENCIA_RUTA =
-                                                Evidencia
-                                        ]
-                                    in
-                                        NuevaRuta
-                            )
-                    in
-                        NuevasRutas
-        in
-            Resultado,
-
-    ResultadoFinal =
-        List.Combine(
-            List.Transform(
-                Rutas,
-                each ExpandirRuta(_)
+    // Convertir el resultado en tabla
+    Resultado =
+        if List.IsEmpty(NuevasRutas) then
+            #table(
+                {"RESULTADO"},
+                {{"SIN_CONEXIONES_POSTERIORES"}}
             )
-        )
+        else
+            Table.FromRecords(NuevasRutas),
+
+    // Ordenar por ruta y salto
+    Ordenar =
+        if List.IsEmpty(NuevasRutas) then
+            Resultado
+        else
+            Table.Sort(
+                Resultado,
+                {
+                    {"ID_RUTA_ACTUAL", Order.Ascending},
+                    {"NUMERO_SALTO", Order.Ascending}
+                }
+            )
 in
-    ResultadoFinal
+    Ordenar
