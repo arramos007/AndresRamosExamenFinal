@@ -1,14 +1,11 @@
 
 let
-    // 1. Conexiones del primer salto
     Origen =
         qry32_ConexionesParaRutas,
 
-    // 2. Índice de salidas por participante
     Indice =
         qry34_IndiceConexionesPorParticipante,
 
-    // 3. Buscar las salidas del participante que recibió
     UnirSiguientesConexiones =
         Table.NestedJoin(
             Origen,
@@ -19,7 +16,6 @@ let
             JoinKind.Inner
         ),
 
-    // 4. Expandir las conexiones del segundo salto
     ExpandirTablas =
         Table.ExpandTableColumn(
             UnirSiguientesConexiones,
@@ -42,7 +38,8 @@ let
                 "FECHA_CREDITO",
                 "MONTO_DEBITO",
                 "MONTO_CREDITO",
-                "ES_CICLO"
+                "ES_CICLO",
+                "NIVEL_EVIDENCIA"
             },
             {
                 "ID_RUTA_SEGUNDO_SALTO",
@@ -54,20 +51,30 @@ let
                 "FECHA_CREDITO_SEGUNDO_SALTO",
                 "MONTO_DEBITO_SEGUNDO_SALTO",
                 "MONTO_CREDITO_SEGUNDO_SALTO",
-                "ES_CICLO_SEGUNDO_SALTO"
+                "ES_CICLO_SEGUNDO_SALTO",
+                "NIVEL_EVIDENCIA_SEGUNDO_SALTO"
             }
         ),
 
-    // 5. Conservar conexiones no anteriores al crédito inicial
+    RenombrarEvidenciaPrimerSalto =
+        Table.RenameColumns(
+            ExpandirConexiones,
+            {
+                {
+                    "NIVEL_EVIDENCIA",
+                    "NIVEL_EVIDENCIA_PRIMER_SALTO"
+                }
+            }
+        ),
+
     FiltrarSecuenciasTemporales =
         Table.SelectRows(
-            ExpandirConexiones,
+            RenombrarEvidenciaPrimerSalto,
             each
                 [FECHA_DEBITO_SEGUNDO_SALTO]
                     >= [FECHA_CREDITO]
         ),
 
-    // 6. Identificador de la secuencia
     AgregarIDRuta =
         Table.AddColumn(
             FiltrarSecuenciasTemporales,
@@ -79,7 +86,6 @@ let
             type text
         ),
 
-    // 7. Tiempo entre ambas operaciones
     AgregarDiferenciaTemporal =
         Table.AddColumn(
             AgregarIDRuta,
@@ -92,7 +98,6 @@ let
             type number
         ),
 
-    // 8. Estado de la secuencia temporal
     AgregarEstadoTemporal =
         Table.AddColumn(
             AgregarDiferenciaTemporal,
@@ -105,7 +110,6 @@ let
             type text
         ),
 
-    // 9. Detectar retorno al participante inicial
     AgregarCiclo =
         Table.AddColumn(
             AgregarEstadoTemporal,
@@ -118,11 +122,10 @@ let
             type logical
         ),
 
-    // 10. Clasificar nivel de evidencia
-    AgregarEvidencia =
+    AgregarEvidenciaSecuencia =
         Table.AddColumn(
             AgregarCiclo,
-            "NIVEL_EVIDENCIA",
+            "NIVEL_EVIDENCIA_SECUENCIA",
             each
                 if [ESTADO_SECUENCIA] = "ORDEN_TEMPORAL_AMBIGUO" then
                     "CONEXION_OBSERVADA"
@@ -131,10 +134,9 @@ let
             type text
         ),
 
-    // 11. Seleccionar columnas de resultado
     SeleccionarResultado =
         Table.SelectColumns(
-            AgregarEvidencia,
+            AgregarEvidenciaSecuencia,
             {
                 "ID_RUTA_DOS_SALTOS",
                 "ID_REGISTRO_DEBITO",
@@ -144,6 +146,7 @@ let
                 "FECHA_DEBITO",
                 "FECHA_CREDITO",
                 "MONTO_DEBITO",
+                "NIVEL_EVIDENCIA_PRIMER_SALTO",
                 "ES_CICLO",
                 "ID_DEBITO_SEGUNDO_SALTO",
                 "ID_CREDITO_SEGUNDO_SALTO",
@@ -153,15 +156,15 @@ let
                 "FECHA_CREDITO_SEGUNDO_SALTO",
                 "MONTO_DEBITO_SEGUNDO_SALTO",
                 "MONTO_CREDITO_SEGUNDO_SALTO",
+                "NIVEL_EVIDENCIA_SEGUNDO_SALTO",
                 "ES_CICLO_SEGUNDO_SALTO",
                 "SEGUNDOS_ENTRE_OPERACIONES",
                 "ESTADO_SECUENCIA",
                 "ES_CICLO_SECUENCIA",
-                "NIVEL_EVIDENCIA"
+                "NIVEL_EVIDENCIA_SECUENCIA"
             }
         ),
 
-    // 12. Orden cronológico
     Resultado =
         Table.Sort(
             SeleccionarResultado,
