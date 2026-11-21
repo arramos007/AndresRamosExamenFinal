@@ -1,12 +1,58 @@
-qry30_ResumenConexionesParticipantes
+qry34_IndiceConexionesPorParticipante
 
 
 let
-    Origen = qry30_ResumenConexionesParticipantes,
-    TotalParticipantes = Table.RowCount(Origen),
-    Resultado = #table(
-        {"TOTAL_PARTICIPANTES"},
-        {{TotalParticipantes}}
-    )
+    // 1. Obtener las conexiones validadas
+    Origen =
+        qry32_ConexionesParaRutas,
+
+    // 2. Agrupar las conexiones por participante emisor
+    AgruparPorOrigen =
+        Table.Group(
+            Origen,
+            {"ID_PARTICIPANTE_ORIGEN"},
+            {
+                {
+                    "CONEXIONES_SALIDA",
+                    each
+                        Table.Sort(
+                            _,
+                            {
+                                {"FECHA_DEBITO", Order.Ascending},
+                                {"ID_REGISTRO_DEBITO", Order.Ascending}
+                            }
+                        ),
+                    type table
+                },
+                {
+                    "CANTIDAD_SALIDAS",
+                    each Table.RowCount(_),
+                    Int64.Type
+                },
+                {
+                    "PRIMERA_FECHA_SALIDA",
+                    each List.Min([FECHA_DEBITO]),
+                    type datetime
+                },
+                {
+                    "ULTIMA_FECHA_SALIDA",
+                    each List.Max([FECHA_DEBITO]),
+                    type datetime
+                }
+            }
+        ),
+
+    // 3. Ordenar participantes
+    OrdenarParticipantes =
+        Table.Sort(
+            AgruparPorOrigen,
+            {
+                {"ID_PARTICIPANTE_ORIGEN", Order.Ascending}
+            }
+        ),
+
+    // 4. Almacenar el índice preparado
+    Resultado =
+        Table.Buffer(OrdenarParticipantes)
 in
     Resultado
