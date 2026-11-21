@@ -1,57 +1,82 @@
-qry32_ConexionesParaRutas
+qry33_ValidacionConexionesRutas
 
 
 let
-    Origen =
-        qry28_RutasEconomicasDirectas,
+    Origen = qry32_ConexionesParaRutas,
 
-    SeleccionarColumnas =
-        Table.SelectColumns(
-            Origen,
+    TotalFilas =
+        Table.RowCount(Origen),
+
+    DebitosDistintos =
+        List.Count(
+            List.Distinct(
+                Origen[ID_REGISTRO_DEBITO]
+            )
+        ),
+
+    CreditosDistintos =
+        List.Count(
+            List.Distinct(
+                Origen[ID_REGISTRO_CREDITO]
+            )
+        ),
+
+    TotalImportes =
+        List.Sum(Origen[MONTO_DEBITO]),
+
+    FilasSinOrigen =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_ORIGEN] = null
+            )
+        ),
+
+    FilasSinDestino =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_DESTINO] = null
+            )
+        ),
+
+    Validaciones = {
+        {"TOTAL_CONEXIONES", TotalFilas, 1338},
+        {"DEBITOS_DISTINTOS", DebitosDistintos, 1338},
+        {"CREDITOS_DISTINTOS", CreditosDistintos, 1338},
+        {"IMPORTE_TOTAL", TotalImportes, 7453839.97},
+        {"ORIGENES_SIN_IDENTIFICAR", FilasSinOrigen, 0},
+        {"DESTINOS_SIN_IDENTIFICAR", FilasSinDestino, 0}
+    },
+
+    Tabla =
+        Table.FromRows(
+            Validaciones,
             {
-                "ID_RUTA",
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_ORIGEN",
-                "ID_PARTICIPANTE_DESTINO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "DIFERENCIA_SEGUNDOS",
-                "NIVEL_EVIDENCIA",
-                "ES_CICLO"
+                "VALIDACION",
+                "RESULTADO",
+                "ESPERADO"
             }
         ),
 
-    Tipos =
-        Table.TransformColumnTypes(
-            SeleccionarColumnas,
-            {
-                {"ID_RUTA", Int64.Type},
-                {"ID_REGISTRO_DEBITO", Int64.Type},
-                {"ID_REGISTRO_CREDITO", Int64.Type},
-                {"ID_PARTICIPANTE_ORIGEN", Int64.Type},
-                {"ID_PARTICIPANTE_DESTINO", Int64.Type},
-                {"FECHA_DEBITO", type datetime},
-                {"FECHA_CREDITO", type datetime},
-                {"MONTO_DEBITO", type number},
-                {"MONTO_CREDITO", type number},
-                {"DIFERENCIA_SEGUNDOS", Int64.Type}
-            }
+    AgregarDiferencia =
+        Table.AddColumn(
+            Tabla,
+            "DIFERENCIA",
+            each [RESULTADO] - [ESPERADO],
+            type number
         ),
 
-    OrdenarConexiones =
-        Table.Sort(
-            Tipos,
-            {
-                {"ID_PARTICIPANTE_ORIGEN", Order.Ascending},
-                {"FECHA_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_DEBITO", Order.Ascending}
-            }
-        ),
-
-    Resultado =
-        Table.Buffer(OrdenarConexiones)
+    AgregarEstado =
+        Table.AddColumn(
+            AgregarDiferencia,
+            "ESTADO",
+            each
+                if Number.Abs([DIFERENCIA]) < 0.01 then
+                    "CORRECTO"
+                else
+                    "REVISAR",
+            type text
+        )
 in
-    Resultado
+    AgregarEstado
