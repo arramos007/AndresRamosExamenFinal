@@ -1,12 +1,14 @@
-qry45_ControlCrecimientoTercerNivel
+qry46_ControlCrecimientoCuartoNivel
 
 
 let
-    Indice = qry34_IndiceConexionesPorParticipante,
+    Indice =
+        qry34_IndiceConexionesPorParticipante,
 
-    EstadoInicial = qry38_EstadoInicialRutas,
+    EstadoInicial =
+        qry38_EstadoInicialRutas,
 
-    // Primer nivel
+    // NIVEL 1
     Nivel1Lista =
         fnExpandirUnNivel(EstadoInicial, Indice),
 
@@ -22,7 +24,7 @@ let
             each [ESTADO_RUTA] = "ABIERTA"
         ),
 
-    // Segundo nivel
+    // NIVEL 2
     Nivel2Lista =
         fnExpandirUnNivel(AbiertasNivel1, Indice),
 
@@ -38,12 +40,28 @@ let
             each [ESTADO_RUTA] = "ABIERTA"
         ),
 
-    // Tercer nivel
+    // NIVEL 3
     Nivel3Lista =
         fnExpandirUnNivel(AbiertasNivel2, Indice),
 
     Nivel3 =
         if List.IsEmpty(Nivel3Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel3Lista),
+
+    AbiertasNivel3 =
+        Table.SelectRows(
+            Nivel3,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
+
+    // NIVEL 4
+    Nivel4Lista =
+        fnExpandirUnNivel(AbiertasNivel3, Indice),
+
+    Nivel4 =
+        if List.IsEmpty(Nivel4Lista) then
             #table(
                 {
                     "ESTADO_RUTA",
@@ -56,12 +74,12 @@ let
                 {}
             )
         else
-            Table.FromRecords(Nivel3Lista),
+            Table.FromRecords(Nivel4Lista),
 
-    // Resumen
+    // AGRUPAR RESULTADOS
     Agrupar =
         Table.Group(
-            Nivel3,
+            Nivel4,
             {"ESTADO_RUTA"},
             {
                 {
@@ -94,22 +112,28 @@ let
         ),
 
     TotalRutas =
-        Table.RowCount(Nivel3),
+        Table.RowCount(Nivel4),
 
     TotalOperaciones =
-        if TotalRutas = 0 then 0
-        else List.Count(
-            List.Distinct(Nivel3[ID_REGISTRO_DEBITO])
-        ),
+        if TotalRutas = 0 then
+            0
+        else
+            List.Count(
+                List.Distinct(
+                    Nivel4[ID_REGISTRO_DEBITO]
+                )
+            ),
 
     TotalCiclos =
-        if TotalRutas = 0 then 0
-        else Table.RowCount(
-            Table.SelectRows(
-                Nivel3,
-                each [ES_CICLO] = true
-            )
-        ),
+        if TotalRutas = 0 then
+            0
+        else
+            Table.RowCount(
+                Table.SelectRows(
+                    Nivel4,
+                    each [ES_CICLO] = true
+                )
+            ),
 
     Resumen =
         #table(
