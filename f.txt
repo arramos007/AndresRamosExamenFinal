@@ -1,88 +1,57 @@
-qry31_ValidacionTotalesParticipantes
-
+qry32_ConexionesParaRutas
 
 
 let
-    Rutas = qry28_RutasEconomicasDirectas,
-    Participantes = qry30_ResumenConexionesParticipantes,
+    Origen =
+        qry28_RutasEconomicasDirectas,
 
-    TotalOperaciones =
-        Table.RowCount(Rutas),
-
-    TotalRecibidoOrigen =
-        List.Sum(Rutas[MONTO_DEBITO]),
-
-    TotalRealizadoOrigen =
-        List.Sum(Rutas[MONTO_DEBITO]),
-
-    TotalRecibidoParticipantes =
-        List.Sum(Participantes[TOTAL_RECIBIDO]),
-
-    TotalRealizadoParticipantes =
-        List.Sum(Participantes[TOTAL_REALIZADO]),
-
-    CantidadRecibida =
-        List.Sum(Participantes[CANTIDAD_ENDOSOS_RECIBIDOS]),
-
-    CantidadRealizada =
-        List.Sum(Participantes[CANTIDAD_ENDOSOS_REALIZADOS]),
-
-    Validaciones = {
-        {
-            "TOTAL_OPERACIONES",
-            TotalOperaciones,
-            1338
-        },
-        {
-            "CANTIDAD_ENDOSOS_RECIBIDOS",
-            CantidadRecibida,
-            TotalOperaciones
-        },
-        {
-            "CANTIDAD_ENDOSOS_REALIZADOS",
-            CantidadRealizada,
-            TotalOperaciones
-        },
-        {
-            "TOTAL_RECIBIDO",
-            TotalRecibidoParticipantes,
-            TotalRecibidoOrigen
-        },
-        {
-            "TOTAL_REALIZADO",
-            TotalRealizadoParticipantes,
-            TotalRealizadoOrigen
-        }
-    },
-
-    Tabla =
-        Table.FromRows(
-            Validaciones,
+    SeleccionarColumnas =
+        Table.SelectColumns(
+            Origen,
             {
-                "VALIDACION",
-                "RESULTADO",
-                "ESPERADO"
+                "ID_RUTA",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_ORIGEN",
+                "ID_PARTICIPANTE_DESTINO",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO",
+                "DIFERENCIA_SEGUNDOS",
+                "NIVEL_EVIDENCIA",
+                "ES_CICLO"
             }
         ),
 
-    AgregarDiferencia =
-        Table.AddColumn(
-            Tabla,
-            "DIFERENCIA",
-            each [RESULTADO] - [ESPERADO],
-            type number
+    Tipos =
+        Table.TransformColumnTypes(
+            SeleccionarColumnas,
+            {
+                {"ID_RUTA", Int64.Type},
+                {"ID_REGISTRO_DEBITO", Int64.Type},
+                {"ID_REGISTRO_CREDITO", Int64.Type},
+                {"ID_PARTICIPANTE_ORIGEN", Int64.Type},
+                {"ID_PARTICIPANTE_DESTINO", Int64.Type},
+                {"FECHA_DEBITO", type datetime},
+                {"FECHA_CREDITO", type datetime},
+                {"MONTO_DEBITO", type number},
+                {"MONTO_CREDITO", type number},
+                {"DIFERENCIA_SEGUNDOS", Int64.Type}
+            }
         ),
 
-    AgregarEstado =
-        Table.AddColumn(
-            AgregarDiferencia,
-            "ESTADO",
-            each
-                if Number.Abs([DIFERENCIA]) < 0.01 then
-                    "CORRECTO"
-                else
-                    "REVISAR",
-            type text
-        )
+    OrdenarConexiones =
+        Table.Sort(
+            Tipos,
+            {
+                {"ID_PARTICIPANTE_ORIGEN", Order.Ascending},
+                {"FECHA_DEBITO", Order.Ascending},
+                {"ID_REGISTRO_DEBITO", Order.Ascending}
+            }
+        ),
+
+    Resultado =
+        Table.Buffer(OrdenarConexiones)
 in
-    AgregarEstado
+    Resultado
