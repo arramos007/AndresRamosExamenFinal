@@ -1,123 +1,155 @@
-qry47_ControlCrecimientoQuintoNivel
+qry48_RutasCompletas
 
 
 let
-    Indice = qry34_IndiceConexionesPorParticipante,
-    EstadoInicial = qry38_EstadoInicialRutas,
+    // Fuentes y función de expansión
+    Indice =
+        qry34_IndiceConexionesPorParticipante,
+
+    EstadoInicial =
+        qry38_EstadoInicialRutas,
 
     // NIVEL 1
-    L1Lista = fnExpandirUnNivel(EstadoInicial, Indice),
-    L1 = Table.FromRecords(L1Lista),
-    A1 = Table.SelectRows(L1, each [ESTADO_RUTA] = "ABIERTA"),
+    Nivel1Lista =
+        fnExpandirUnNivel(EstadoInicial, Indice),
+
+    Nivel1 =
+        if List.IsEmpty(Nivel1Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel1Lista),
+
+    Nivel1Identificado =
+        Table.AddColumn(
+            Nivel1,
+            "NIVEL_EXPANSION",
+            each 1,
+            Int64.Type
+        ),
+
+    AbiertasNivel1 =
+        Table.SelectRows(
+            Nivel1,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
 
     // NIVEL 2
-    L2Lista = fnExpandirUnNivel(A1, Indice),
-    L2 = Table.FromRecords(L2Lista),
-    A2 = Table.SelectRows(L2, each [ESTADO_RUTA] = "ABIERTA"),
+    Nivel2Lista =
+        fnExpandirUnNivel(AbiertasNivel1, Indice),
+
+    Nivel2 =
+        if List.IsEmpty(Nivel2Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel2Lista),
+
+    Nivel2Identificado =
+        Table.AddColumn(
+            Nivel2,
+            "NIVEL_EXPANSION",
+            each 2,
+            Int64.Type
+        ),
+
+    AbiertasNivel2 =
+        Table.SelectRows(
+            Nivel2,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
 
     // NIVEL 3
-    L3Lista = fnExpandirUnNivel(A2, Indice),
-    L3 = Table.FromRecords(L3Lista),
-    A3 = Table.SelectRows(L3, each [ESTADO_RUTA] = "ABIERTA"),
+    Nivel3Lista =
+        fnExpandirUnNivel(AbiertasNivel2, Indice),
+
+    Nivel3 =
+        if List.IsEmpty(Nivel3Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel3Lista),
+
+    Nivel3Identificado =
+        Table.AddColumn(
+            Nivel3,
+            "NIVEL_EXPANSION",
+            each 3,
+            Int64.Type
+        ),
+
+    AbiertasNivel3 =
+        Table.SelectRows(
+            Nivel3,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
 
     // NIVEL 4
-    L4Lista = fnExpandirUnNivel(A3, Indice),
-    L4 = Table.FromRecords(L4Lista),
-    A4 = Table.SelectRows(L4, each [ESTADO_RUTA] = "ABIERTA"),
+    Nivel4Lista =
+        fnExpandirUnNivel(AbiertasNivel3, Indice),
+
+    Nivel4 =
+        if List.IsEmpty(Nivel4Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel4Lista),
+
+    Nivel4Identificado =
+        Table.AddColumn(
+            Nivel4,
+            "NIVEL_EXPANSION",
+            each 4,
+            Int64.Type
+        ),
+
+    AbiertasNivel4 =
+        Table.SelectRows(
+            Nivel4,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
 
     // NIVEL 5
-    L5Lista = fnExpandirUnNivel(A4, Indice),
+    Nivel5Lista =
+        fnExpandirUnNivel(AbiertasNivel4, Indice),
 
-    L5 =
-        if List.IsEmpty(L5Lista) then
-            #table(
-                {
-                    "ESTADO_RUTA",
-                    "ID_REGISTRO_DEBITO",
-                    "ID_PARTICIPANTE_INICIAL",
-                    "ID_PARTICIPANTE_ACTUAL",
-                    "ES_CICLO"
-                },
-                {}
-            )
+    Nivel5 =
+        if List.IsEmpty(Nivel5Lista) then
+            #table({}, {})
         else
-            Table.FromRecords(L5Lista),
+            Table.FromRecords(Nivel5Lista),
 
-    Agrupar =
-        Table.Group(
-            L5,
-            {"ESTADO_RUTA"},
+    Nivel5Identificado =
+        Table.AddColumn(
+            Nivel5,
+            "NIVEL_EXPANSION",
+            each 5,
+            Int64.Type
+        ),
+
+    // CONSOLIDAR LOS CINCO NIVELES
+    ConsolidarNiveles =
+        Table.Combine(
             {
-                {
-                    "CANTIDAD_RUTAS",
-                    each Table.RowCount(_),
-                    Int64.Type
-                },
-                {
-                    "OPERACIONES_DISTINTAS",
-                    each List.Count(
-                        List.Distinct([ID_REGISTRO_DEBITO])
-                    ),
-                    Int64.Type
-                },
-                {
-                    "PARTICIPANTES_INICIALES",
-                    each List.Count(
-                        List.Distinct([ID_PARTICIPANTE_INICIAL])
-                    ),
-                    Int64.Type
-                },
-                {
-                    "PARTICIPANTES_DESTINO",
-                    each List.Count(
-                        List.Distinct([ID_PARTICIPANTE_ACTUAL])
-                    ),
-                    Int64.Type
-                }
+                Nivel1Identificado,
+                Nivel2Identificado,
+                Nivel3Identificado,
+                Nivel4Identificado,
+                Nivel5Identificado
             }
         ),
 
-    TotalRutas = Table.RowCount(L5),
-
-    TotalOperaciones =
-        if TotalRutas = 0 then 0
-        else List.Count(
-            List.Distinct(L5[ID_REGISTRO_DEBITO])
+    // ELIMINAR SOLAMENTE IDENTIFICADORES DE RUTA REPETIDOS
+    RutasUnicas =
+        Table.Distinct(
+            ConsolidarNiveles,
+            {"ID_RUTA_ACTUAL"}
         ),
 
-    TotalCiclos =
-        if TotalRutas = 0 then 0
-        else Table.RowCount(
-            Table.SelectRows(L5, each [ES_CICLO] = true)
-        ),
-
-    Resumen =
-        #table(
+    // ORDENAR POR PROFUNDIDAD Y RUTA
+    OrdenarRutas =
+        Table.Sort(
+            RutasUnicas,
             {
-                "ESTADO_RUTA",
-                "CANTIDAD_RUTAS",
-                "OPERACIONES_DISTINTAS",
-                "PARTICIPANTES_INICIALES",
-                "PARTICIPANTES_DESTINO"
-            },
-            {
-                {
-                    "TOTAL_GENERAL",
-                    TotalRutas,
-                    TotalOperaciones,
-                    null,
-                    null
-                },
-                {
-                    "TOTAL_CICLOS",
-                    TotalCiclos,
-                    null,
-                    null,
-                    null
-                }
+                {"NIVEL_EXPANSION", Order.Ascending},
+                {"ID_RUTA_ACTUAL", Order.Ascending}
             }
-        ),
-
-    Resultado = Table.Combine({Agrupar, Resumen})
+        )
 in
-    Resultado
+    OrdenarRutas
