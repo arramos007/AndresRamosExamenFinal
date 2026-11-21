@@ -1,91 +1,181 @@
-qry41_ValidacionExpansionNivel1
 
-
+(Estado as table, Indice as table) as list =>
 let
-    Origen = qry40_PruebaExpansionNivel1,
-
-    TotalNuevasRutas =
-        Table.RowCount(Origen),
-
-    SaltosCorrectos =
-        Table.RowCount(
+    Rutas =
+        Table.ToRecords(
             Table.SelectRows(
-                Origen,
-                each [NUMERO_SALTO] = 2
+                Estado,
+                each [ESTADO_RUTA] = "ABIERTA"
             )
         ),
 
-    RutasConPadre =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ID_RUTA_PADRE] <> null
+    ExpandirRuta =
+        (Padre as record) as list =>
+        let
+            ParticipanteActual =
+                Padre[ID_PARTICIPANTE_ACTUAL],
+
+            FechaAnterior =
+                Padre[FECHA_ULTIMO_MOVIMIENTO],
+
+            OperacionesAnteriores =
+                Padre[OPERACIONES_RECORRIDAS],
+
+            ParticipantesAnteriores =
+                Padre[PARTICIPANTES_VISITADOS],
+
+            BuscarIndice =
+                Table.SelectRows(
+                    Indice,
+                    each
+                        [ID_PARTICIPANTE_ORIGEN]
+                        = ParticipanteActual
+                ),
+
+            Resultado =
+                if Table.IsEmpty(BuscarIndice) then
+                    {}
+                else
+                    let
+                        Salidas =
+                            BuscarIndice{0}[CONEXIONES_SALIDA],
+
+                        Candidatos =
+                            Table.SelectRows(
+                                Salidas,
+                                each
+                                    not List.Contains(
+                                        OperacionesAnteriores,
+                                        [ID_REGISTRO_DEBITO]
+                                    )
+                            ),
+
+                        Registros =
+                            Table.ToRecords(Candidatos),
+
+                        NuevasRutas =
+                            List.Transform(
+                                Registros,
+                                (Conexion as record) =>
+                                    let
+                                        Destino =
+                                            Conexion[ID_PARTICIPANTE_DESTINO],
+
+                                        FechaDebito =
+                                            Conexion[FECHA_DEBITO],
+
+                                        FechaIgual =
+                                            FechaDebito = FechaAnterior,
+
+                                        FechaAnteriorAlCredito =
+                                            FechaDebito < FechaAnterior,
+
+                                        Ciclo =
+                                            List.Contains(
+                                                ParticipantesAnteriores,
+                                                Destino
+                                            ),
+
+                                        EstadoNuevaRuta =
+                                            if Ciclo then
+                                                "CICLO_DETECTADO"
+                                            else if FechaIgual then
+                                                "ORDEN_TEMPORAL_AMBIGUO"
+                                            else if FechaAnteriorAlCredito then
+                                                "SECUENCIA_TEMPORAL_NO_VERIFICABLE"
+                                            else
+                                                "ABIERTA",
+
+                                        Evidencia =
+                                            if Ciclo
+                                                or FechaIgual
+                                                or FechaAnteriorAlCredito
+                                            then
+                                                "CONEXION_OBSERVADA"
+                                            else if
+                                                Padre[NIVEL_EVIDENCIA_RUTA]
+                                                = "CONFIRMADA"
+                                                and Conexion[NIVEL_EVIDENCIA]
+                                                = "CONFIRMADA"
+                                            then
+                                                "CONFIRMADA"
+                                            else
+                                                "PARCIALMENTE_TRAZABLE",
+
+                                        NuevaRuta = [
+                                            ID_RUTA_ACTUAL =
+                                                Padre[ID_RUTA_ACTUAL]
+                                                & ">"
+                                                & Text.From(
+                                                    Conexion[ID_REGISTRO_DEBITO]
+                                                ),
+
+                                            ID_RUTA_PADRE =
+                                                Padre[ID_RUTA_ACTUAL],
+
+                                            ID_REGISTRO_DEBITO =
+                                                Conexion[ID_REGISTRO_DEBITO],
+
+                                            ID_REGISTRO_CREDITO =
+                                                Conexion[ID_REGISTRO_CREDITO],
+
+                                            ID_PARTICIPANTE_INICIAL =
+                                                Padre[ID_PARTICIPANTE_INICIAL],
+
+                                            ID_PARTICIPANTE_ACTUAL =
+                                                Destino,
+
+                                            NUMERO_SALTO =
+                                                Padre[NUMERO_SALTO] + 1,
+
+                                            PARTICIPANTES_VISITADOS =
+                                                ParticipantesAnteriores
+                                                & {Destino},
+
+                                            OPERACIONES_RECORRIDAS =
+                                                OperacionesAnteriores
+                                                & {
+                                                    Conexion[ID_REGISTRO_DEBITO]
+                                                },
+
+                                            FECHA_DEBITO =
+                                                Conexion[FECHA_DEBITO],
+
+                                            FECHA_CREDITO =
+                                                Conexion[FECHA_CREDITO],
+
+                                            FECHA_ULTIMO_MOVIMIENTO =
+                                                Conexion[FECHA_CREDITO],
+
+                                            MONTO_DEBITO =
+                                                Conexion[MONTO_DEBITO],
+
+                                            MONTO_CREDITO =
+                                                Conexion[MONTO_CREDITO],
+
+                                            ESTADO_RUTA =
+                                                EstadoNuevaRuta,
+
+                                            ES_CICLO =
+                                                Ciclo,
+
+                                            NIVEL_EVIDENCIA_RUTA =
+                                                Evidencia
+                                        ]
+                                    in
+                                        NuevaRuta
+                            )
+                    in
+                        NuevasRutas
+        in
+            Resultado,
+
+    ResultadoFinal =
+        List.Combine(
+            List.Transform(
+                Rutas,
+                each ExpandirRuta(_)
             )
-        ),
-
-    HistorialParticipantesCorrecto =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    List.Count([PARTICIPANTES_VISITADOS]) = 3
-            )
-        ),
-
-    HistorialOperacionesCorrecto =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    List.Count([OPERACIONES_RECORRIDAS]) = 2
-            )
-        ),
-
-    ImportesIguales =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    Number.Abs(
-                        [MONTO_DEBITO] - [MONTO_CREDITO]
-                    ) < 0.000001
-            )
-        ),
-
-    CiclosDetectados =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ES_CICLO] = true
-            )
-        ),
-
-    Validaciones = {
-        {"TOTAL_NUEVAS_RUTAS", TotalNuevasRutas, TotalNuevasRutas},
-        {"NUMERO_SALTO_CORRECTO", SaltosCorrectos, TotalNuevasRutas},
-        {"RUTAS_CON_PADRE", RutasConPadre, TotalNuevasRutas},
-        {"HISTORIAL_PARTICIPANTES", HistorialParticipantesCorrecto, TotalNuevasRutas},
-        {"HISTORIAL_OPERACIONES", HistorialOperacionesCorrecto, TotalNuevasRutas},
-        {"IMPORTES_IGUALES", ImportesIguales, TotalNuevasRutas},
-        {"CICLOS_DETECTADOS", CiclosDetectados, null}
-    },
-
-    Tabla =
-        Table.FromRows(
-            Validaciones,
-            {"VALIDACION", "RESULTADO", "ESPERADO"}
-        ),
-
-    AgregarEstado =
-        Table.AddColumn(
-            Tabla,
-            "ESTADO",
-            each
-                if [ESPERADO] = null
-                    or [RESULTADO] = [ESPERADO]
-                then "CORRECTO"
-                else "REVISAR",
-            type text
         )
 in
-    AgregarEstado
+    ResultadoFinal
