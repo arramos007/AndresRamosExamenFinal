@@ -1,40 +1,49 @@
-qry44_ControlCrecimientoSegundoNivel
+qry45_ControlCrecimientoTercerNivel
 
 
 let
-    // 1. Obtener las rutas iniciales
-    EstadoInicial =
-        qry38_EstadoInicialRutas,
+    Indice = qry34_IndiceConexionesPorParticipante,
 
-    // 2. Expandir el primer nivel
-    PrimeraExpansionLista =
-        fnExpandirUnNivel(
-            EstadoInicial,
-            qry34_IndiceConexionesPorParticipante
-        ),
+    EstadoInicial = qry38_EstadoInicialRutas,
 
-    PrimeraExpansion =
-        if List.IsEmpty(PrimeraExpansionLista) then
+    // Primer nivel
+    Nivel1Lista =
+        fnExpandirUnNivel(EstadoInicial, Indice),
+
+    Nivel1 =
+        if List.IsEmpty(Nivel1Lista) then
             #table({}, {})
         else
-            Table.FromRecords(PrimeraExpansionLista),
+            Table.FromRecords(Nivel1Lista),
 
-    // 3. Conservar solamente rutas abiertas
-    RutasAbiertas =
+    AbiertasNivel1 =
         Table.SelectRows(
-            PrimeraExpansion,
+            Nivel1,
             each [ESTADO_RUTA] = "ABIERTA"
         ),
 
-    // 4. Expandir el segundo nivel
-    SegundaExpansionLista =
-        fnExpandirUnNivel(
-            RutasAbiertas,
-            qry34_IndiceConexionesPorParticipante
+    // Segundo nivel
+    Nivel2Lista =
+        fnExpandirUnNivel(AbiertasNivel1, Indice),
+
+    Nivel2 =
+        if List.IsEmpty(Nivel2Lista) then
+            #table({}, {})
+        else
+            Table.FromRecords(Nivel2Lista),
+
+    AbiertasNivel2 =
+        Table.SelectRows(
+            Nivel2,
+            each [ESTADO_RUTA] = "ABIERTA"
         ),
 
-    SegundaExpansion =
-        if List.IsEmpty(SegundaExpansionLista) then
+    // Tercer nivel
+    Nivel3Lista =
+        fnExpandirUnNivel(AbiertasNivel2, Indice),
+
+    Nivel3 =
+        if List.IsEmpty(Nivel3Lista) then
             #table(
                 {
                     "ESTADO_RUTA",
@@ -47,12 +56,12 @@ let
                 {}
             )
         else
-            Table.FromRecords(SegundaExpansionLista),
+            Table.FromRecords(Nivel3Lista),
 
-    // 5. Resumir por estado
-    AgruparEstados =
+    // Resumen
+    Agrupar =
         Table.Group(
-            SegundaExpansion,
+            Nivel3,
             {"ESTADO_RUTA"},
             {
                 {
@@ -62,61 +71,45 @@ let
                 },
                 {
                     "OPERACIONES_DISTINTAS",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                [ID_REGISTRO_DEBITO]
-                            )
-                        ),
+                    each List.Count(
+                        List.Distinct([ID_REGISTRO_DEBITO])
+                    ),
                     Int64.Type
                 },
                 {
                     "PARTICIPANTES_INICIALES",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                [ID_PARTICIPANTE_INICIAL]
-                            )
-                        ),
+                    each List.Count(
+                        List.Distinct([ID_PARTICIPANTE_INICIAL])
+                    ),
                     Int64.Type
                 },
                 {
                     "PARTICIPANTES_DESTINO",
-                    each
-                        List.Count(
-                            List.Distinct(
-                                [ID_PARTICIPANTE_ACTUAL]
-                            )
-                        ),
+                    each List.Count(
+                        List.Distinct([ID_PARTICIPANTE_ACTUAL])
+                    ),
                     Int64.Type
                 }
             }
         ),
 
-    // 6. Totales del segundo nivel
     TotalRutas =
-        Table.RowCount(SegundaExpansion),
+        Table.RowCount(Nivel3),
 
     TotalOperaciones =
-        if TotalRutas = 0 then
-            0
-        else
-            List.Count(
-                List.Distinct(
-                    SegundaExpansion[ID_REGISTRO_DEBITO]
-                )
-            ),
+        if TotalRutas = 0 then 0
+        else List.Count(
+            List.Distinct(Nivel3[ID_REGISTRO_DEBITO])
+        ),
 
     TotalCiclos =
-        if TotalRutas = 0 then
-            0
-        else
-            Table.RowCount(
-                Table.SelectRows(
-                    SegundaExpansion,
-                    each [ES_CICLO] = true
-                )
-            ),
+        if TotalRutas = 0 then 0
+        else Table.RowCount(
+            Table.SelectRows(
+                Nivel3,
+                each [ES_CICLO] = true
+            )
+        ),
 
     Resumen =
         #table(
@@ -146,19 +139,6 @@ let
         ),
 
     Resultado =
-        Table.Combine(
-            {
-                AgruparEstados,
-                Resumen
-            }
-        ),
-
-    Ordenar =
-        Table.Sort(
-            Resultado,
-            {
-                {"ESTADO_RUTA", Order.Ascending}
-            }
-        )
+        Table.Combine({Agrupar, Resumen})
 in
-    Ordenar
+    Resultado
