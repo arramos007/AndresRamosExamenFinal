@@ -1,177 +1,90 @@
+qry37_ValidacionSegundoSalto
+
 
 let
     Origen =
-        qry32_ConexionesParaRutas,
+        qry36_ConexionesCronologicasSegundoSalto,
 
-    Indice =
-        qry34_IndiceConexionesPorParticipante,
+    TotalSecuencias =
+        Table.RowCount(Origen),
 
-    UnirSiguientesConexiones =
-        Table.NestedJoin(
-            Origen,
-            {"ID_PARTICIPANTE_DESTINO"},
-            Indice,
-            {"ID_PARTICIPANTE_ORIGEN"},
-            "SALIDAS_SIGUIENTES",
-            JoinKind.Inner
+    ParesOperacionesDistintas =
+        Table.RowCount(
+            Table.Distinct(
+                Table.SelectColumns(
+                    Origen,
+                    {
+                        "ID_REGISTRO_DEBITO",
+                        "ID_DEBITO_SEGUNDO_SALTO"
+                    }
+                )
+            )
         ),
 
-    ExpandirTablas =
-        Table.ExpandTableColumn(
-            UnirSiguientesConexiones,
-            "SALIDAS_SIGUIENTES",
-            {"CONEXIONES_SALIDA"},
-            {"TABLA_SIGUIENTES_SALIDAS"}
+    ParesDuplicados =
+        TotalSecuencias - ParesOperacionesDistintas,
+
+    OrigenesInconsistentes =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    [ID_PARTICIPANTE_DESTINO]
+                    <> [ORIGEN_SEGUNDO_SALTO]
+            )
         ),
 
-    ExpandirConexiones =
-        Table.ExpandTableColumn(
-            ExpandirTablas,
-            "TABLA_SIGUIENTES_SALIDAS",
-            {
-                "ID_RUTA",
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_ORIGEN",
-                "ID_PARTICIPANTE_DESTINO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "ES_CICLO",
-                "NIVEL_EVIDENCIA"
-            },
-            {
-                "ID_RUTA_SEGUNDO_SALTO",
-                "ID_DEBITO_SEGUNDO_SALTO",
-                "ID_CREDITO_SEGUNDO_SALTO",
-                "ORIGEN_SEGUNDO_SALTO",
-                "DESTINO_SEGUNDO_SALTO",
-                "FECHA_DEBITO_SEGUNDO_SALTO",
-                "FECHA_CREDITO_SEGUNDO_SALTO",
-                "MONTO_DEBITO_SEGUNDO_SALTO",
-                "MONTO_CREDITO_SEGUNDO_SALTO",
-                "ES_CICLO_SEGUNDO_SALTO",
-                "NIVEL_EVIDENCIA_SEGUNDO_SALTO"
-            }
+    SecuenciasConTiempoNegativo =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [SEGUNDOS_ENTRE_OPERACIONES] < 0
+            )
         ),
 
-    RenombrarEvidenciaPrimerSalto =
-        Table.RenameColumns(
-            ExpandirConexiones,
-            {
-                {
-                    "NIVEL_EVIDENCIA",
-                    "NIVEL_EVIDENCIA_PRIMER_SALTO"
-                }
-            }
+    SecuenciasTemporalesAmbiguas =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    [ESTADO_SECUENCIA]
+                    = "ORDEN_TEMPORAL_AMBIGUO"
+            )
         ),
 
-    FiltrarSecuenciasTemporales =
-        Table.SelectRows(
-            RenombrarEvidenciaPrimerSalto,
-            each
-                [FECHA_DEBITO_SEGUNDO_SALTO]
-                    >= [FECHA_CREDITO]
+    SecuenciasPosteriores =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    [ESTADO_SECUENCIA]
+                    = "CRONOLOGICAMENTE_POSTERIOR"
+            )
         ),
 
-    AgregarIDRuta =
-        Table.AddColumn(
-            FiltrarSecuenciasTemporales,
-            "ID_RUTA_DOS_SALTOS",
-            each
-                Text.From([ID_REGISTRO_DEBITO])
-                & ">"
-                & Text.From([ID_DEBITO_SEGUNDO_SALTO]),
-            type text
-        ),
-
-    AgregarDiferenciaTemporal =
-        Table.AddColumn(
-            AgregarIDRuta,
-            "SEGUNDOS_ENTRE_OPERACIONES",
-            each
-                Duration.TotalSeconds(
-                    [FECHA_DEBITO_SEGUNDO_SALTO]
-                    - [FECHA_CREDITO]
-                ),
-            type number
-        ),
-
-    AgregarEstadoTemporal =
-        Table.AddColumn(
-            AgregarDiferenciaTemporal,
-            "ESTADO_SECUENCIA",
-            each
-                if [SEGUNDOS_ENTRE_OPERACIONES] = 0 then
-                    "ORDEN_TEMPORAL_AMBIGUO"
-                else
-                    "CRONOLOGICAMENTE_POSTERIOR",
-            type text
-        ),
-
-    AgregarCiclo =
-        Table.AddColumn(
-            AgregarEstadoTemporal,
-            "ES_CICLO_SECUENCIA",
-            each
-                [ID_PARTICIPANTE_ORIGEN]
-                    = [DESTINO_SEGUNDO_SALTO]
-                or [ES_CICLO]
-                or [ES_CICLO_SEGUNDO_SALTO],
-            type logical
-        ),
-
-    AgregarEvidenciaSecuencia =
-        Table.AddColumn(
-            AgregarCiclo,
-            "NIVEL_EVIDENCIA_SECUENCIA",
-            each
-                if [ESTADO_SECUENCIA] = "ORDEN_TEMPORAL_AMBIGUO" then
-                    "CONEXION_OBSERVADA"
-                else
-                    "SECUENCIA_CONFIRMADA",
-            type text
-        ),
-
-    SeleccionarResultado =
-        Table.SelectColumns(
-            AgregarEvidenciaSecuencia,
-            {
-                "ID_RUTA_DOS_SALTOS",
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_ORIGEN",
-                "ID_PARTICIPANTE_DESTINO",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "MONTO_DEBITO",
-                "NIVEL_EVIDENCIA_PRIMER_SALTO",
-                "ES_CICLO",
-                "ID_DEBITO_SEGUNDO_SALTO",
-                "ID_CREDITO_SEGUNDO_SALTO",
-                "ORIGEN_SEGUNDO_SALTO",
-                "DESTINO_SEGUNDO_SALTO",
-                "FECHA_DEBITO_SEGUNDO_SALTO",
-                "FECHA_CREDITO_SEGUNDO_SALTO",
-                "MONTO_DEBITO_SEGUNDO_SALTO",
-                "MONTO_CREDITO_SEGUNDO_SALTO",
-                "NIVEL_EVIDENCIA_SEGUNDO_SALTO",
-                "ES_CICLO_SEGUNDO_SALTO",
-                "SEGUNDOS_ENTRE_OPERACIONES",
-                "ESTADO_SECUENCIA",
-                "ES_CICLO_SECUENCIA",
-                "NIVEL_EVIDENCIA_SECUENCIA"
-            }
+    CiclosDetectados =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ES_CICLO_SECUENCIA] = true
+            )
         ),
 
     Resultado =
-        Table.Sort(
-            SeleccionarResultado,
+        #table(
             {
-                {"FECHA_DEBITO", Order.Ascending},
-                {"ID_REGISTRO_DEBITO", Order.Ascending},
-                {"FECHA_DEBITO_SEGUNDO_SALTO", Order.Ascending}
+                "INDICADOR",
+                "CANTIDAD"
+            },
+            {
+                {"TOTAL_SECUENCIAS", TotalSecuencias},
+                {"PARES_OPERACIONES_DISTINTAS", ParesOperacionesDistintas},
+                {"PARES_DUPLICADOS", ParesDuplicados},
+                {"ORIGENES_INCONSISTENTES", OrigenesInconsistentes},
+                {"SECUENCIAS_CON_TIEMPO_NEGATIVO", SecuenciasConTiempoNegativo},
+                {"SECUENCIAS_TEMPORALES_AMBIGUAS", SecuenciasTemporalesAmbiguas},
+                {"SECUENCIAS_CRONOLOGICAMENTE_POSTERIORES", SecuenciasPosteriores},
+                {"CICLOS_DETECTADOS", CiclosDetectados}
             }
         )
 in
