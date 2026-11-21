@@ -1,134 +1,74 @@
-qry38_EstadoInicialRutas
+qry39_ValidacionEstadoInicial
 
 
 let
-    // 1. Obtener las conexiones directas validadas
-    Origen =
-        qry32_ConexionesParaRutas,
+    Origen = qry38_EstadoInicialRutas,
 
-    // 2. Identificar cada ruta inicial
-    AgregarIDRuta =
+    TotalRutas =
+        Table.RowCount(Origen),
+
+    DebitosDistintos =
+        List.Count(
+            List.Distinct(Origen[ID_REGISTRO_DEBITO])
+        ),
+
+    SaltosIniciales =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [NUMERO_SALTO] = 1
+            )
+        ),
+
+    ParticipantesPorRuta =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each List.Count([PARTICIPANTES_VISITADOS]) = 2
+            )
+        ),
+
+    OperacionesPorRuta =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each List.Count([OPERACIONES_RECORRIDAS]) = 1
+            )
+        ),
+
+    RutasSinPadre =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_RUTA_PADRE] = null
+            )
+        ),
+
+    Validaciones = {
+        {"TOTAL_RUTAS_INICIALES", TotalRutas, 1338},
+        {"DEBITOS_DISTINTOS", DebitosDistintos, 1338},
+        {"NUMERO_SALTO_IGUAL_A_UNO", SaltosIniciales, 1338},
+        {"DOS_PARTICIPANTES_POR_RUTA", ParticipantesPorRuta, 1338},
+        {"UNA_OPERACION_POR_RUTA", OperacionesPorRuta, 1338},
+        {"RUTAS_SIN_PADRE", RutasSinPadre, 1338}
+    },
+
+    Tabla =
+        Table.FromRows(
+            Validaciones,
+            {"VALIDACION", "RESULTADO", "ESPERADO"}
+        ),
+
+    AgregarEstado =
         Table.AddColumn(
-            Origen,
-            "ID_RUTA_ACTUAL",
+            Tabla,
+            "ESTADO",
             each
-                "R-" & Text.From([ID_REGISTRO_DEBITO]),
-            type text
-        ),
-
-    // 3. La ruta inicial no tiene una ruta padre
-    AgregarRutaPadre =
-        Table.AddColumn(
-            AgregarIDRuta,
-            "ID_RUTA_PADRE",
-            each null,
-            type nullable text
-        ),
-
-    // 4. Registrar el primer salto
-    AgregarNumeroSalto =
-        Table.AddColumn(
-            AgregarRutaPadre,
-            "NUMERO_SALTO",
-            each 1,
-            Int64.Type
-        ),
-
-    // 5. Identificar participante inicial
-    AgregarParticipanteInicial =
-        Table.AddColumn(
-            AgregarNumeroSalto,
-            "ID_PARTICIPANTE_INICIAL",
-            each [ID_PARTICIPANTE_ORIGEN],
-            Int64.Type
-        ),
-
-    // 6. Identificar participante actual
-    AgregarParticipanteActual =
-        Table.AddColumn(
-            AgregarParticipanteInicial,
-            "ID_PARTICIPANTE_ACTUAL",
-            each [ID_PARTICIPANTE_DESTINO],
-            Int64.Type
-        ),
-
-    // 7. Registrar participantes visitados
-    AgregarParticipantesVisitados =
-        Table.AddColumn(
-            AgregarParticipanteActual,
-            "PARTICIPANTES_VISITADOS",
-            each {
-                [ID_PARTICIPANTE_ORIGEN],
-                [ID_PARTICIPANTE_DESTINO]
-            },
-            type list
-        ),
-
-    // 8. Registrar operaciones recorridas
-    AgregarOperacionesRecorridas =
-        Table.AddColumn(
-            AgregarParticipantesVisitados,
-            "OPERACIONES_RECORRIDAS",
-            each {
-                [ID_REGISTRO_DEBITO]
-            },
-            type list
-        ),
-
-    // 9. Registrar fecha de referencia para el siguiente salto
-    AgregarFechaUltimoMovimiento =
-        Table.AddColumn(
-            AgregarOperacionesRecorridas,
-            "FECHA_ULTIMO_MOVIMIENTO",
-            each [FECHA_CREDITO],
-            type datetime
-        ),
-
-    // 10. Registrar estado inicial de la ruta
-    AgregarEstadoRuta =
-        Table.AddColumn(
-            AgregarFechaUltimoMovimiento,
-            "ESTADO_RUTA",
-            each
-                if [ES_CICLO] = true then
-                    "CICLO_DETECTADO"
+                if [RESULTADO] = [ESPERADO] then
+                    "CORRECTO"
                 else
-                    "ABIERTA",
+                    "REVISAR",
             type text
-        ),
-
-    // 11. Conservar evidencia de la operación inicial
-    AgregarNivelEvidencia =
-        Table.AddColumn(
-            AgregarEstadoRuta,
-            "NIVEL_EVIDENCIA_RUTA",
-            each [NIVEL_EVIDENCIA],
-            type text
-        ),
-
-    // 12. Seleccionar estructura del recorrido
-    Resultado =
-        Table.SelectColumns(
-            AgregarNivelEvidencia,
-            {
-                "ID_RUTA_ACTUAL",
-                "ID_RUTA_PADRE",
-                "ID_REGISTRO_DEBITO",
-                "ID_REGISTRO_CREDITO",
-                "ID_PARTICIPANTE_INICIAL",
-                "ID_PARTICIPANTE_ACTUAL",
-                "NUMERO_SALTO",
-                "PARTICIPANTES_VISITADOS",
-                "OPERACIONES_RECORRIDAS",
-                "FECHA_DEBITO",
-                "FECHA_CREDITO",
-                "FECHA_ULTIMO_MOVIMIENTO",
-                "MONTO_DEBITO",
-                "MONTO_CREDITO",
-                "ESTADO_RUTA",
-                "ES_CICLO",
-                "NIVEL_EVIDENCIA_RUTA"
-            }
         )
 in
-    Resultado
+    AgregarEstado
