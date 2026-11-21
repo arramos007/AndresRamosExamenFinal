@@ -1,74 +1,171 @@
-qry35_ValidacionIndiceConexiones
+qry36_ConexionesCronologicasSegundoSalto
 
 
 let
-    Origen = qry34_IndiceConexionesPorParticipante,
+    // 1. Conexiones del primer salto
+    Origen =
+        qry32_ConexionesParaRutas,
 
-    CantidadParticipantes =
-        Table.RowCount(Origen),
+    // 2. Índice de salidas por participante
+    Indice =
+        qry34_IndiceConexionesPorParticipante,
 
-    TotalSalidas =
-        List.Sum(Origen[CANTIDAD_SALIDAS]),
-
-    ParticipantesConSalidasMultiples =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [CANTIDAD_SALIDAS] > 1
-            )
+    // 3. Buscar las salidas del participante que recibió
+    UnirSiguientesConexiones =
+        Table.NestedJoin(
+            Origen,
+            {"ID_PARTICIPANTE_DESTINO"},
+            Indice,
+            {"ID_PARTICIPANTE_ORIGEN"},
+            "SALIDAS_SIGUIENTES",
+            JoinKind.Inner
         ),
 
-    TotalTablasAnidadas =
-        List.Sum(
-            List.Transform(
-                Origen[CONEXIONES_SALIDA],
-                each Table.RowCount(_)
-            )
+    // 4. Expandir las conexiones posteriores posibles
+    ExpandirTablas =
+        Table.ExpandTableColumn(
+            UnirSiguientesConexiones,
+            "SALIDAS_SIGUIENTES",
+            {"CONEXIONES_SALIDA"},
+            {"TABLA_SIGUIENTES_SALIDAS"}
         ),
 
-    Validaciones = {
-        {
-            "PARTICIPANTES_CON_SALIDAS",
-            CantidadParticipantes,
-            CantidadParticipantes
-        },
-        {
-            "TOTAL_SALIDAS",
-            TotalSalidas,
-            1338
-        },
-        {
-            "TOTAL_REGISTROS_TABLAS_ANIDADAS",
-            TotalTablasAnidadas,
-            1338
-        },
-        {
-            "PARTICIPANTES_CON_SALIDAS_MULTIPLES",
-            ParticipantesConSalidasMultiples,
-            ParticipantesConSalidasMultiples
-        }
-    },
-
-    Tabla =
-        Table.FromRows(
-            Validaciones,
+    ExpandirConexiones =
+        Table.ExpandTableColumn(
+            ExpandirTablas,
+            "TABLA_SIGUIENTES_SALIDAS",
             {
-                "VALIDACION",
-                "RESULTADO",
-                "ESPERADO"
+                "ID_RUTA",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_ORIGEN",
+                "ID_PARTICIPANTE_DESTINO",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO"
+            },
+            {
+                "ID_RUTA_SEGUNDO_SALTO",
+                "ID_DEBITO_SEGUNDO_SALTO",
+                "ID_CREDITO_SEGUNDO_SALTO",
+                "ORIGEN_SEGUNDO_SALTO",
+                "DESTINO_SEGUNDO_SALTO",
+                "FECHA_DEBITO_SEGUNDO_SALTO",
+                "FECHA_CREDITO_SEGUNDO_SALTO",
+                "MONTO_DEBITO_SEGUNDO_SALTO",
+                "MONTO_CREDITO_SEGUNDO_SALTO"
             }
         ),
 
-    AgregarEstado =
-        Table.AddColumn(
-            Tabla,
-            "ESTADO",
+    // 5. Conservar candidatos no anteriores al crédito inicial
+    FiltrarSecuenciasTemporales =
+        Table.SelectRows(
+            ExpandirConexiones,
             each
-                if [RESULTADO] = [ESPERADO] then
-                    "CORRECTO"
-                else
-                    "REVISAR",
+                [FECHA_DEBITO_SEGUNDO_SALTO]
+                    >= [FECHA_CREDITO]
+        ),
+
+    // 6. Identificar la secuencia de dos operaciones
+    AgregarIDRuta =
+        Table.AddColumn(
+            FiltrarSecuenciasTemporales,
+            "ID_RUTA_DOS_SALTOS",
+            each
+                Text.From([ID_REGISTRO_DEBITO])
+                & ">"
+                & Text.From([ID_DEBITO_SEGUNDO_SALTO]),
             type text
+        ),
+
+    // 7. Calcular tiempo entre crédito y siguiente débito
+    AgregarDiferenciaTemporal =
+        Table.AddColumn(
+            AgregarIDRuta,
+            "SEGUNDOS_ENTRE_OPERACIONES",
+            each
+                Duration.TotalSeconds(
+                    [FECHA_DEBITO_SEGUNDO_SALTO]
+                    - [FECHA_CREDITO]
+                ),
+            type number
+        ),
+
+    // 8. Clasificar certeza del orden temporal
+    AgregarEstadoTemporal =
+        Table.AddColumn(
+            AgregarDiferenciaTemporal,
+            "ESTADO_SECUENCIA",
+            each
+                if [SEGUNDOS_ENTRE_OPERACIONES] = 0 then
+                    "ORDEN_TEMPORAL_AMBIGUO"
+                else
+                    "CRONOLOGICAMENTE_POSTERIOR",
+            type text
+        ),
+
+    // 9. Detectar retorno al participante inicial
+    AgregarCiclo =
+        Table.AddColumn(
+            AgregarEstadoTemporal,
+            "ES_CICLO",
+            each
+                [ID_PARTICIPANTE_ORIGEN]
+                = [DESTINO_SEGUNDO_SALTO],
+            type logical
+        ),
+
+    // 10. Clasificar evidencia
+    AgregarEvidencia =
+        Table.AddColumn(
+            AgregarCiclo,
+            "NIVEL_EVIDENCIA",
+            each
+                if [ESTADO_SECUENCIA] = "ORDEN_TEMPORAL_AMBIGUO" then
+                    "CONEXION_OBSERVADA"
+                else
+                    "SECUENCIA_CONFIRMADA",
+            type text
+        ),
+
+    // 11. Seleccionar resultado
+    SeleccionarResultado =
+        Table.SelectColumns(
+            AgregarEvidencia,
+            {
+                "ID_RUTA_DOS_SALTOS",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_ORIGEN",
+                "ID_PARTICIPANTE_DESTINO",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "MONTO_DEBITO",
+                "ID_DEBITO_SEGUNDO_SALTO",
+                "ID_CREDITO_SEGUNDO_SALTO",
+                "ORIGEN_SEGUNDO_SALTO",
+                "DESTINO_SEGUNDO_SALTO",
+                "FECHA_DEBITO_SEGUNDO_SALTO",
+                "FECHA_CREDITO_SEGUNDO_SALTO",
+                "MONTO_DEBITO_SEGUNDO_SALTO",
+                "MONTO_CREDITO_SEGUNDO_SALTO",
+                "SEGUNDOS_ENTRE_OPERACIONES",
+                "ESTADO_SECUENCIA",
+                "NIVEL_EVIDENCIA",
+                "ES_CICLO"
+            }
+        ),
+
+    // 12. Orden cronológico
+    Resultado =
+        Table.Sort(
+            SeleccionarResultado,
+            {
+                {"FECHA_DEBITO", Order.Ascending},
+                {"ID_REGISTRO_DEBITO", Order.Ascending},
+                {"FECHA_DEBITO_SEGUNDO_SALTO", Order.Ascending}
+            }
         )
 in
-    AgregarEstado
+    Resultado
