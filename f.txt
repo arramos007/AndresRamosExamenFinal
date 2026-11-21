@@ -1,42 +1,91 @@
-qry40_PruebaExpansionNivel1
+qry41_ValidacionExpansionNivel1
 
 
 let
-    // Tomar una muestra de 10 rutas iniciales
-    EstadoPrueba =
-        Table.FirstN(
-            qry38_EstadoInicialRutas,
-            10
+    Origen = qry40_PruebaExpansionNivel1,
+
+    TotalNuevasRutas =
+        Table.RowCount(Origen),
+
+    SaltosCorrectos =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [NUMERO_SALTO] = 2
+            )
         ),
 
-    // Ejecutar la expansión de un nivel
-    NuevasRutas =
-        fnExpandirUnNivel(
-            EstadoPrueba,
-            qry34_IndiceConexionesPorParticipante
+    RutasConPadre =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_RUTA_PADRE] <> null
+            )
         ),
 
-    // Convertir el resultado en tabla
-    Resultado =
-        if List.IsEmpty(NuevasRutas) then
-            #table(
-                {"RESULTADO"},
-                {{"SIN_CONEXIONES_POSTERIORES"}}
+    HistorialParticipantesCorrecto =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    List.Count([PARTICIPANTES_VISITADOS]) = 3
             )
-        else
-            Table.FromRecords(NuevasRutas),
+        ),
 
-    // Ordenar por ruta y salto
-    Ordenar =
-        if List.IsEmpty(NuevasRutas) then
-            Resultado
-        else
-            Table.Sort(
-                Resultado,
-                {
-                    {"ID_RUTA_ACTUAL", Order.Ascending},
-                    {"NUMERO_SALTO", Order.Ascending}
-                }
+    HistorialOperacionesCorrecto =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    List.Count([OPERACIONES_RECORRIDAS]) = 2
             )
+        ),
+
+    ImportesIguales =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    Number.Abs(
+                        [MONTO_DEBITO] - [MONTO_CREDITO]
+                    ) < 0.000001
+            )
+        ),
+
+    CiclosDetectados =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ES_CICLO] = true
+            )
+        ),
+
+    Validaciones = {
+        {"TOTAL_NUEVAS_RUTAS", TotalNuevasRutas, TotalNuevasRutas},
+        {"NUMERO_SALTO_CORRECTO", SaltosCorrectos, TotalNuevasRutas},
+        {"RUTAS_CON_PADRE", RutasConPadre, TotalNuevasRutas},
+        {"HISTORIAL_PARTICIPANTES", HistorialParticipantesCorrecto, TotalNuevasRutas},
+        {"HISTORIAL_OPERACIONES", HistorialOperacionesCorrecto, TotalNuevasRutas},
+        {"IMPORTES_IGUALES", ImportesIguales, TotalNuevasRutas},
+        {"CICLOS_DETECTADOS", CiclosDetectados, null}
+    },
+
+    Tabla =
+        Table.FromRows(
+            Validaciones,
+            {"VALIDACION", "RESULTADO", "ESPERADO"}
+        ),
+
+    AgregarEstado =
+        Table.AddColumn(
+            Tabla,
+            "ESTADO",
+            each
+                if [ESPERADO] = null
+                    or [RESULTADO] = [ESPERADO]
+                then "CORRECTO"
+                else "REVISAR",
+            type text
+        )
 in
-    Ordenar
+    AgregarEstado
