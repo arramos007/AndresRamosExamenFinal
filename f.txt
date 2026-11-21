@@ -1,56 +1,146 @@
-qry49_ValidacionRutasCompletas
+qry50_ValidacionIntegridadRed
 
 
 let
     Origen = qry48_RutasCompletas,
 
-    AgruparNiveles =
-        Table.Group(
+    // Identificadores de rutas existentes
+    RutasExistentes =
+        Table.Distinct(
+            Table.SelectColumns(
+                Origen,
+                {"ID_RUTA_ACTUAL"}
+            )
+        ),
+
+    // Rutas de niveles posteriores al inicial
+    RutasPosteriores =
+        Table.SelectRows(
             Origen,
-            {"NIVEL_EXPANSION"},
-            {
-                {
-                    "CANTIDAD_RUTAS",
-                    each Table.RowCount(_),
-                    Int64.Type
-                },
-                {
-                    "OPERACIONES_DISTINTAS",
-                    each List.Count(
-                        List.Distinct([ID_REGISTRO_DEBITO])
-                    ),
-                    Int64.Type
-                },
-                {
-                    "PARTICIPANTES_INICIALES",
-                    each List.Count(
-                        List.Distinct([ID_PARTICIPANTE_INICIAL])
-                    ),
-                    Int64.Type
-                }
-            }
+            each [NIVEL_EXPANSION] > 1
         ),
 
-    Ordenar =
-        Table.Sort(
-            AgruparNiveles,
-            {{"NIVEL_EXPANSION", Order.Ascending}}
+    // Comprobar que cada ruta posterior tenga padre
+    PadresVacios =
+        Table.RowCount(
+            Table.SelectRows(
+                RutasPosteriores,
+                each [ID_RUTA_PADRE] = null
+            )
         ),
 
-    Total =
-        #table(
-            {"NIVEL_EXPANSION", "CANTIDAD_RUTAS", "OPERACIONES_DISTINTAS", "PARTICIPANTES_INICIALES"},
-            {
-                {
-                    "TOTAL",
-                    Table.RowCount(Origen),
-                    List.Count(List.Distinct(Origen[ID_REGISTRO_DEBITO])),
-                    List.Count(List.Distinct(Origen[ID_PARTICIPANTE_INICIAL]))
-                }
-            }
+    // Comprobar que el padre exista en la red
+    UnirPadres =
+        Table.NestedJoin(
+            RutasPosteriores,
+            {"ID_RUTA_PADRE"},
+            RutasExistentes,
+            {"ID_RUTA_ACTUAL"},
+            "PADRE",
+            JoinKind.LeftOuter
         ),
 
+    PadresNoEncontrados =
+        Table.RowCount(
+            Table.SelectRows(
+                UnirPadres,
+                each Table.IsEmpty([PADRE])
+            )
+        ),
+
+    // Comprobar identificaciones de participantes
+    OrigenesSinIdentificar =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_INICIAL] = null
+            )
+        ),
+
+    DestinosSinIdentificar =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [ID_PARTICIPANTE_ACTUAL] = null
+            )
+        ),
+
+    // Comprobar coherencia de ciclos
+    CiclosInconsistentes =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    (
+                        [ES_CICLO] = true
+                        and [ESTADO_RUTA] <> "CICLO_DETECTADO"
+                    )
+                    or
+                    (
+                        [ES_CICLO] = false
+                        and [ESTADO_RUTA] = "CICLO_DETECTADO"
+                    )
+            )
+        ),
+
+    // Comprobar nivel inicial sin padre
+    InicialesConPadre =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each
+                    [NIVEL_EXPANSION] = 1
+                    and [ID_RUTA_PADRE] <> null
+            )
+        ),
+
+    // Construir resultados
     Resultado =
-        Table.Combine({Ordenar, Total})
+        #table(
+            {
+                "VALIDACION",
+                "RESULTADO",
+                "ESPERADO",
+                "ESTADO"
+            },
+            {
+                {
+                    "RUTAS_POSTERIORES_SIN_PADRE",
+                    PadresVacios,
+                    0,
+                    if PadresVacios = 0 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "PADRES_NO_ENCONTRADOS",
+                    PadresNoEncontrados,
+                    0,
+                    if PadresNoEncontrados = 0 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "ORIGENES_SIN_IDENTIFICAR",
+                    OrigenesSinIdentificar,
+                    0,
+                    if OrigenesSinIdentificar = 0 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "DESTINOS_SIN_IDENTIFICAR",
+                    DestinosSinIdentificar,
+                    0,
+                    if DestinosSinIdentificar = 0 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "CICLOS_INCONSISTENTES",
+                    CiclosInconsistentes,
+                    0,
+                    if CiclosInconsistentes = 0 then "CORRECTO" else "REVISAR"
+                },
+                {
+                    "INICIALES_CON_PADRE",
+                    InicialesConPadre,
+                    0,
+                    if InicialesConPadre = 0 then "CORRECTO" else "REVISAR"
+                }
+            }
+        )
 in
     Resultado
