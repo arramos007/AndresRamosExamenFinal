@@ -1,24 +1,42 @@
-qry42_ControlCrecimientoPrimerNivel
+qry44_ControlCrecimientoSegundoNivel
 
 
 let
-    // 1. Cargar las rutas iniciales
+    // 1. Obtener las rutas iniciales
     EstadoInicial =
         qry38_EstadoInicialRutas,
 
-    // 2. Expandir solamente el primer nivel
-    NuevasRutas =
+    // 2. Expandir el primer nivel
+    PrimeraExpansionLista =
         fnExpandirUnNivel(
             EstadoInicial,
             qry34_IndiceConexionesPorParticipante
         ),
 
-    // 3. Convertir las rutas generadas en tabla
-    TablaRutas =
-        if List.IsEmpty(NuevasRutas) then
+    PrimeraExpansion =
+        if List.IsEmpty(PrimeraExpansionLista) then
+            #table({}, {})
+        else
+            Table.FromRecords(PrimeraExpansionLista),
+
+    // 3. Conservar solamente rutas abiertas
+    RutasAbiertas =
+        Table.SelectRows(
+            PrimeraExpansion,
+            each [ESTADO_RUTA] = "ABIERTA"
+        ),
+
+    // 4. Expandir el segundo nivel
+    SegundaExpansionLista =
+        fnExpandirUnNivel(
+            RutasAbiertas,
+            qry34_IndiceConexionesPorParticipante
+        ),
+
+    SegundaExpansion =
+        if List.IsEmpty(SegundaExpansionLista) then
             #table(
                 {
-                    "ID_RUTA_ACTUAL",
                     "ESTADO_RUTA",
                     "ID_REGISTRO_DEBITO",
                     "ID_PARTICIPANTE_INICIAL",
@@ -29,12 +47,12 @@ let
                 {}
             )
         else
-            Table.FromRecords(NuevasRutas),
+            Table.FromRecords(SegundaExpansionLista),
 
-    // 4. Agrupar por estado
+    // 5. Resumir por estado
     AgruparEstados =
         Table.Group(
-            TablaRutas,
+            SegundaExpansion,
             {"ESTADO_RUTA"},
             {
                 {
@@ -75,9 +93,9 @@ let
             }
         ),
 
-    // 5. Agregar totales generales
+    // 6. Totales del segundo nivel
     TotalRutas =
-        Table.RowCount(TablaRutas),
+        Table.RowCount(SegundaExpansion),
 
     TotalOperaciones =
         if TotalRutas = 0 then
@@ -85,17 +103,7 @@ let
         else
             List.Count(
                 List.Distinct(
-                    TablaRutas[ID_REGISTRO_DEBITO]
-                )
-            ),
-
-    TotalParticipantes =
-        if TotalRutas = 0 then
-            0
-        else
-            List.Count(
-                List.Distinct(
-                    TablaRutas[ID_PARTICIPANTE_ACTUAL]
+                    SegundaExpansion[ID_REGISTRO_DEBITO]
                 )
             ),
 
@@ -105,7 +113,7 @@ let
         else
             Table.RowCount(
                 Table.SelectRows(
-                    TablaRutas,
+                    SegundaExpansion,
                     each [ES_CICLO] = true
                 )
             ),
@@ -125,7 +133,7 @@ let
                     TotalRutas,
                     TotalOperaciones,
                     null,
-                    TotalParticipantes
+                    null
                 },
                 {
                     "TOTAL_CICLOS",
@@ -137,7 +145,6 @@ let
             }
         ),
 
-    // 6. Unir el resumen de estados y totales
     Resultado =
         Table.Combine(
             {
