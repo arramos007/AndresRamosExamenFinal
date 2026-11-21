@@ -1,9 +1,6 @@
-fnExpandirUnNivel
-
 
 (Estado as table, Indice as table) as list =>
 let
-    // Procesar cada ruta que todavía está abierta
     Rutas =
         Table.ToRecords(
             Table.SelectRows(
@@ -12,96 +9,91 @@ let
             )
         ),
 
-    // Buscar las conexiones posteriores de cada ruta
-    ExpandirRutas =
-        List.Transform(
-            Rutas,
-            (Padre) =>
-                let
-                    ParticipanteActual =
-                        Padre[ID_PARTICIPANTE_ACTUAL],
+    ExpandirRuta =
+        (Padre as record) as list =>
+        let
+            ParticipanteActual =
+                Padre[ID_PARTICIPANTE_ACTUAL],
 
-                    FechaAnterior =
-                        Padre[FECHA_ULTIMO_MOVIMIENTO],
+            FechaAnterior =
+                Padre[FECHA_ULTIMO_MOVIMIENTO],
 
-                    OperacionesAnteriores =
-                        Padre[OPERACIONES_RECORRIDAS],
+            OperacionesAnteriores =
+                Padre[OPERACIONES_RECORRIDAS],
 
-                    ParticipantesAnteriores =
-                        Padre[PARTICIPANTES_VISITADOS],
+            ParticipantesAnteriores =
+                Padre[PARTICIPANTES_VISITADOS],
 
-                    // Localizar salidas del participante actual
-                    BuscarIndice =
-                        Table.SelectRows(
-                            Indice,
-                            each
-                                [ID_PARTICIPANTE_ORIGEN]
-                                = ParticipanteActual
-                        ),
+            BuscarIndice =
+                Table.SelectRows(
+                    Indice,
+                    each
+                        [ID_PARTICIPANTE_ORIGEN]
+                        = ParticipanteActual
+                ),
 
-                    Salidas =
-                        if Table.IsEmpty(BuscarIndice) then
-                            #table({}, {})
-                        else
+            Resultado =
+                if Table.IsEmpty(BuscarIndice) then
+                    {}
+                else
+                    let
+                        Salidas =
                             BuscarIndice{0}[CONEXIONES_SALIDA],
 
-                    // Evitar operaciones anteriores y fechas previas
-                    Candidatos =
-                        Table.SelectRows(
-                            Salidas,
-                            each
-                                [FECHA_DEBITO] >= FechaAnterior
-                                and not List.Contains(
-                                    OperacionesAnteriores,
-                                    [ID_REGISTRO_DEBITO]
-                                )
-                        ),
+                        Candidatos =
+                            Table.SelectRows(
+                                Salidas,
+                                each
+                                    [FECHA_DEBITO] >= FechaAnterior
+                                    and not List.Contains(
+                                        OperacionesAnteriores,
+                                        [ID_REGISTRO_DEBITO]
+                                    )
+                            ),
 
-                    Registros =
-                        Table.ToRecords(Candidatos),
+                        Registros =
+                            Table.ToRecords(Candidatos),
 
-                    // Construir cada nueva rama
-                    NuevasRutas =
-                        List.Transform(
-                            Registros,
-                            (Conexion) =>
-                                let
-                                    Destino =
-                                        Conexion[ID_PARTICIPANTE_DESTINO],
+                        NuevasRutas =
+                            List.Transform(
+                                Registros,
+                                (Conexion as record) =>
+                                    let
+                                        Destino =
+                                            Conexion[ID_PARTICIPANTE_DESTINO],
 
-                                    FechaIgual =
-                                        Conexion[FECHA_DEBITO]
-                                        = FechaAnterior,
+                                        FechaIgual =
+                                            Conexion[FECHA_DEBITO]
+                                            = FechaAnterior,
 
-                                    Ciclo =
-                                        List.Contains(
-                                            ParticipantesAnteriores,
-                                            Destino
-                                        ),
+                                        Ciclo =
+                                            List.Contains(
+                                                ParticipantesAnteriores,
+                                                Destino
+                                            ),
 
-                                    EstadoNuevaRuta =
-                                        if Ciclo then
-                                            "CICLO_DETECTADO"
-                                        else if FechaIgual then
-                                            "ORDEN_TEMPORAL_AMBIGUO"
-                                        else
-                                            "ABIERTA",
+                                        EstadoNuevaRuta =
+                                            if Ciclo then
+                                                "CICLO_DETECTADO"
+                                            else if FechaIgual then
+                                                "ORDEN_TEMPORAL_AMBIGUO"
+                                            else
+                                                "ABIERTA",
 
-                                    Evidencia =
-                                        if Ciclo or FechaIgual then
-                                            "CONEXION_OBSERVADA"
-                                        else if
-                                            Padre[NIVEL_EVIDENCIA_RUTA]
-                                            = "CONFIRMADA"
-                                            and Conexion[NIVEL_EVIDENCIA]
-                                            = "CONFIRMADA"
-                                        then
-                                            "CONFIRMADA"
-                                        else
-                                            "PARCIALMENTE_TRAZABLE",
+                                        Evidencia =
+                                            if Ciclo or FechaIgual then
+                                                "CONEXION_OBSERVADA"
+                                            else if
+                                                Padre[NIVEL_EVIDENCIA_RUTA]
+                                                = "CONFIRMADA"
+                                                and Conexion[NIVEL_EVIDENCIA]
+                                                = "CONFIRMADA"
+                                            then
+                                                "CONFIRMADA"
+                                            else
+                                                "PARCIALMENTE_TRAZABLE",
 
-                                    NuevaRuta =
-                                        [
+                                        NuevaRuta = [
                                             ID_RUTA_ACTUAL =
                                                 Padre[ID_RUTA_ACTUAL]
                                                 & ">"
@@ -161,14 +153,20 @@ let
                                             NIVEL_EVIDENCIA_RUTA =
                                                 Evidencia
                                         ]
-                                in
-                                    NuevaRuta
-                        )
-                in
-                    NuevasRutas
-        ),
+                                    in
+                                        NuevaRuta
+                            )
+                    in
+                        NuevasRutas
+        in
+            Resultado,
 
-    Resultado =
-        List.Combine(ExpandirRutas)
+    ResultadoFinal =
+        List.Combine(
+            List.Transform(
+                Rutas,
+                each ExpandirRuta(_)
+            )
+        )
 in
-    Resultado
+    ResultadoFinal
