@@ -1,58 +1,74 @@
-qry34_IndiceConexionesPorParticipante
+qry35_ValidacionIndiceConexiones
 
 
 let
-    // 1. Obtener las conexiones validadas
-    Origen =
-        qry32_ConexionesParaRutas,
+    Origen = qry34_IndiceConexionesPorParticipante,
 
-    // 2. Agrupar las conexiones por participante emisor
-    AgruparPorOrigen =
-        Table.Group(
-            Origen,
-            {"ID_PARTICIPANTE_ORIGEN"},
+    CantidadParticipantes =
+        Table.RowCount(Origen),
+
+    TotalSalidas =
+        List.Sum(Origen[CANTIDAD_SALIDAS]),
+
+    ParticipantesConSalidasMultiples =
+        Table.RowCount(
+            Table.SelectRows(
+                Origen,
+                each [CANTIDAD_SALIDAS] > 1
+            )
+        ),
+
+    TotalTablasAnidadas =
+        List.Sum(
+            List.Transform(
+                Origen[CONEXIONES_SALIDA],
+                each Table.RowCount(_)
+            )
+        ),
+
+    Validaciones = {
+        {
+            "PARTICIPANTES_CON_SALIDAS",
+            CantidadParticipantes,
+            CantidadParticipantes
+        },
+        {
+            "TOTAL_SALIDAS",
+            TotalSalidas,
+            1338
+        },
+        {
+            "TOTAL_REGISTROS_TABLAS_ANIDADAS",
+            TotalTablasAnidadas,
+            1338
+        },
+        {
+            "PARTICIPANTES_CON_SALIDAS_MULTIPLES",
+            ParticipantesConSalidasMultiples,
+            ParticipantesConSalidasMultiples
+        }
+    },
+
+    Tabla =
+        Table.FromRows(
+            Validaciones,
             {
-                {
-                    "CONEXIONES_SALIDA",
-                    each
-                        Table.Sort(
-                            _,
-                            {
-                                {"FECHA_DEBITO", Order.Ascending},
-                                {"ID_REGISTRO_DEBITO", Order.Ascending}
-                            }
-                        ),
-                    type table
-                },
-                {
-                    "CANTIDAD_SALIDAS",
-                    each Table.RowCount(_),
-                    Int64.Type
-                },
-                {
-                    "PRIMERA_FECHA_SALIDA",
-                    each List.Min([FECHA_DEBITO]),
-                    type datetime
-                },
-                {
-                    "ULTIMA_FECHA_SALIDA",
-                    each List.Max([FECHA_DEBITO]),
-                    type datetime
-                }
+                "VALIDACION",
+                "RESULTADO",
+                "ESPERADO"
             }
         ),
 
-    // 3. Ordenar participantes
-    OrdenarParticipantes =
-        Table.Sort(
-            AgruparPorOrigen,
-            {
-                {"ID_PARTICIPANTE_ORIGEN", Order.Ascending}
-            }
-        ),
-
-    // 4. Almacenar el índice preparado
-    Resultado =
-        Table.Buffer(OrdenarParticipantes)
+    AgregarEstado =
+        Table.AddColumn(
+            Tabla,
+            "ESTADO",
+            each
+                if [RESULTADO] = [ESPERADO] then
+                    "CORRECTO"
+                else
+                    "REVISAR",
+            type text
+        )
 in
-    Resultado
+    AgregarEstado
