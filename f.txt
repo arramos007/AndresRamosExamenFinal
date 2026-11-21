@@ -1,90 +1,133 @@
-qry37_ValidacionSegundoSalto
+qry38_EstadoInicialRutas
 
 
 let
+    // 1. Obtener las conexiones directas validadas
     Origen =
-        qry36_ConexionesCronologicasSegundoSalto,
+        qry32_ConexionesParaRutas,
 
-    TotalSecuencias =
-        Table.RowCount(Origen),
-
-    ParesOperacionesDistintas =
-        Table.RowCount(
-            Table.Distinct(
-                Table.SelectColumns(
-                    Origen,
-                    {
-                        "ID_REGISTRO_DEBITO",
-                        "ID_DEBITO_SEGUNDO_SALTO"
-                    }
-                )
-            )
+    // 2. Identificar cada ruta inicial
+    AgregarIDRuta =
+        Table.AddColumn(
+            Origen,
+            "ID_RUTA_ACTUAL",
+            each
+                "R-" & Text.From([ID_REGISTRO_DEBITO]),
+            type text
         ),
 
-    ParesDuplicados =
-        TotalSecuencias - ParesOperacionesDistintas,
-
-    OrigenesInconsistentes =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    [ID_PARTICIPANTE_DESTINO]
-                    <> [ORIGEN_SEGUNDO_SALTO]
-            )
+    // 3. La ruta inicial no tiene una ruta padre
+    AgregarRutaPadre =
+        Table.AddColumn(
+            AgregarIDRuta,
+            "ID_RUTA_PADRE",
+            each null,
+            type nullable text
         ),
 
-    SecuenciasConTiempoNegativo =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [SEGUNDOS_ENTRE_OPERACIONES] < 0
-            )
+    // 4. Registrar el primer salto
+    AgregarNumeroSalto =
+        Table.AddColumn(
+            AgregarRutaPadre,
+            "NUMERO_SALTO",
+            each 1,
+            Int64.Type
         ),
 
-    SecuenciasTemporalesAmbiguas =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    [ESTADO_SECUENCIA]
-                    = "ORDEN_TEMPORAL_AMBIGUO"
-            )
+    // 5. Identificar participante inicial
+    AgregarParticipanteInicial =
+        Table.AddColumn(
+            AgregarNumeroSalto,
+            "ID_PARTICIPANTE_INICIAL",
+            each [ID_PARTICIPANTE_ORIGEN],
+            Int64.Type
         ),
 
-    SecuenciasPosteriores =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each
-                    [ESTADO_SECUENCIA]
-                    = "CRONOLOGICAMENTE_POSTERIOR"
-            )
+    // 6. Identificar participante actual
+    AgregarParticipanteActual =
+        Table.AddColumn(
+            AgregarParticipanteInicial,
+            "ID_PARTICIPANTE_ACTUAL",
+            each [ID_PARTICIPANTE_DESTINO],
+            Int64.Type
         ),
 
-    CiclosDetectados =
-        Table.RowCount(
-            Table.SelectRows(
-                Origen,
-                each [ES_CICLO_SECUENCIA] = true
-            )
-        ),
-
-    Resultado =
-        #table(
-            {
-                "INDICADOR",
-                "CANTIDAD"
+    // 7. Registrar participantes visitados
+    AgregarParticipantesVisitados =
+        Table.AddColumn(
+            AgregarParticipanteActual,
+            "PARTICIPANTES_VISITADOS",
+            each {
+                [ID_PARTICIPANTE_ORIGEN],
+                [ID_PARTICIPANTE_DESTINO]
             },
+            type list
+        ),
+
+    // 8. Registrar operaciones recorridas
+    AgregarOperacionesRecorridas =
+        Table.AddColumn(
+            AgregarParticipantesVisitados,
+            "OPERACIONES_RECORRIDAS",
+            each {
+                [ID_REGISTRO_DEBITO]
+            },
+            type list
+        ),
+
+    // 9. Registrar fecha de referencia para el siguiente salto
+    AgregarFechaUltimoMovimiento =
+        Table.AddColumn(
+            AgregarOperacionesRecorridas,
+            "FECHA_ULTIMO_MOVIMIENTO",
+            each [FECHA_CREDITO],
+            type datetime
+        ),
+
+    // 10. Registrar estado inicial de la ruta
+    AgregarEstadoRuta =
+        Table.AddColumn(
+            AgregarFechaUltimoMovimiento,
+            "ESTADO_RUTA",
+            each
+                if [ES_CICLO] = true then
+                    "CICLO_DETECTADO"
+                else
+                    "ABIERTA",
+            type text
+        ),
+
+    // 11. Conservar evidencia de la operación inicial
+    AgregarNivelEvidencia =
+        Table.AddColumn(
+            AgregarEstadoRuta,
+            "NIVEL_EVIDENCIA_RUTA",
+            each [NIVEL_EVIDENCIA],
+            type text
+        ),
+
+    // 12. Seleccionar estructura del recorrido
+    Resultado =
+        Table.SelectColumns(
+            AgregarNivelEvidencia,
             {
-                {"TOTAL_SECUENCIAS", TotalSecuencias},
-                {"PARES_OPERACIONES_DISTINTAS", ParesOperacionesDistintas},
-                {"PARES_DUPLICADOS", ParesDuplicados},
-                {"ORIGENES_INCONSISTENTES", OrigenesInconsistentes},
-                {"SECUENCIAS_CON_TIEMPO_NEGATIVO", SecuenciasConTiempoNegativo},
-                {"SECUENCIAS_TEMPORALES_AMBIGUAS", SecuenciasTemporalesAmbiguas},
-                {"SECUENCIAS_CRONOLOGICAMENTE_POSTERIORES", SecuenciasPosteriores},
-                {"CICLOS_DETECTADOS", CiclosDetectados}
+                "ID_RUTA_ACTUAL",
+                "ID_RUTA_PADRE",
+                "ID_REGISTRO_DEBITO",
+                "ID_REGISTRO_CREDITO",
+                "ID_PARTICIPANTE_INICIAL",
+                "ID_PARTICIPANTE_ACTUAL",
+                "NUMERO_SALTO",
+                "PARTICIPANTES_VISITADOS",
+                "OPERACIONES_RECORRIDAS",
+                "FECHA_DEBITO",
+                "FECHA_CREDITO",
+                "FECHA_ULTIMO_MOVIMIENTO",
+                "MONTO_DEBITO",
+                "MONTO_CREDITO",
+                "ESTADO_RUTA",
+                "ES_CICLO",
+                "NIVEL_EVIDENCIA_RUTA"
             }
         )
 in
