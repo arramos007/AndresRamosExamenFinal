@@ -1,131 +1,157 @@
-qry43_ValidacionCronologicaPrueba
+qry42_ControlCrecimientoPrimerNivel
 
 
 let
-    Origen = qry40_PruebaExpansionNivel1,
+    // 1. Cargar las rutas iniciales
+    EstadoInicial =
+        qry38_EstadoInicialRutas,
 
-    UnirRutaPadre =
-        Table.NestedJoin(
-            Origen,
-            {"ID_RUTA_PADRE"},
-            qry38_EstadoInicialRutas,
-            {"ID_RUTA_ACTUAL"},
-            "PADRE",
-            JoinKind.LeftOuter
+    // 2. Expandir solamente el primer nivel
+    NuevasRutas =
+        fnExpandirUnNivel(
+            EstadoInicial,
+            qry34_IndiceConexionesPorParticipante
         ),
 
-    ExpandirFechaPadre =
-        Table.ExpandTableColumn(
-            UnirRutaPadre,
-            "PADRE",
-            {"FECHA_ULTIMO_MOVIMIENTO"},
-            {"FECHA_CREDITO_ANTERIOR"}
-        ),
-
-    Total =
-        Table.RowCount(ExpandirFechaPadre),
-
-    PadresIdentificados =
-        Table.RowCount(
-            Table.SelectRows(
-                ExpandirFechaPadre,
-                each [FECHA_CREDITO_ANTERIOR] <> null
+    // 3. Convertir las rutas generadas en tabla
+    TablaRutas =
+        if List.IsEmpty(NuevasRutas) then
+            #table(
+                {
+                    "ID_RUTA_ACTUAL",
+                    "ESTADO_RUTA",
+                    "ID_REGISTRO_DEBITO",
+                    "ID_PARTICIPANTE_INICIAL",
+                    "ID_PARTICIPANTE_ACTUAL",
+                    "NUMERO_SALTO",
+                    "ES_CICLO"
+                },
+                {}
             )
+        else
+            Table.FromRecords(NuevasRutas),
+
+    // 4. Agrupar por estado
+    AgruparEstados =
+        Table.Group(
+            TablaRutas,
+            {"ESTADO_RUTA"},
+            {
+                {
+                    "CANTIDAD_RUTAS",
+                    each Table.RowCount(_),
+                    Int64.Type
+                },
+                {
+                    "OPERACIONES_DISTINTAS",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                [ID_REGISTRO_DEBITO]
+                            )
+                        ),
+                    Int64.Type
+                },
+                {
+                    "PARTICIPANTES_INICIALES",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                [ID_PARTICIPANTE_INICIAL]
+                            )
+                        ),
+                    Int64.Type
+                },
+                {
+                    "PARTICIPANTES_DESTINO",
+                    each
+                        List.Count(
+                            List.Distinct(
+                                [ID_PARTICIPANTE_ACTUAL]
+                            )
+                        ),
+                    Int64.Type
+                }
+            }
         ),
 
-    AbiertasCorrectas =
-        Table.RowCount(
-            Table.SelectRows(
-                ExpandirFechaPadre,
-                each
-                    [ESTADO_RUTA] = "ABIERTA"
-                    and [FECHA_DEBITO] > [FECHA_CREDITO_ANTERIOR]
-            )
-        ),
+    // 5. Agregar totales generales
+    TotalRutas =
+        Table.RowCount(TablaRutas),
 
-    AmbiguasCorrectas =
-        Table.RowCount(
-            Table.SelectRows(
-                ExpandirFechaPadre,
-                each
-                    [ESTADO_RUTA] = "ORDEN_TEMPORAL_AMBIGUO"
-                    and [FECHA_DEBITO] = [FECHA_CREDITO_ANTERIOR]
-            )
-        ),
+    TotalOperaciones =
+        if TotalRutas = 0 then
+            0
+        else
+            List.Count(
+                List.Distinct(
+                    TablaRutas[ID_REGISTRO_DEBITO]
+                )
+            ),
 
-    NoVerificablesCorrectas =
-        Table.RowCount(
-            Table.SelectRows(
-                ExpandirFechaPadre,
-                each
-                    [ESTADO_RUTA] = "SECUENCIA_TEMPORAL_NO_VERIFICABLE"
-                    and [FECHA_DEBITO] < [FECHA_CREDITO_ANTERIOR]
-            )
-        ),
+    TotalParticipantes =
+        if TotalRutas = 0 then
+            0
+        else
+            List.Count(
+                List.Distinct(
+                    TablaRutas[ID_PARTICIPANTE_ACTUAL]
+                )
+            ),
 
-    CiclosCorrectos =
-        Table.RowCount(
-            Table.SelectRows(
-                ExpandirFechaPadre,
-                each
-                    [ESTADO_RUTA] = "CICLO_DETECTADO"
-                    and [ES_CICLO] = true
-            )
-        ),
-
-    Validaciones = {
-        {"TOTAL_CONEXIONES", Total, Total},
-        {"PADRES_IDENTIFICADOS", PadresIdentificados, Total},
-        {"ABIERTAS_CRONOLOGICAMENTE_CORRECTAS", AbiertasCorrectas,
+    TotalCiclos =
+        if TotalRutas = 0 then
+            0
+        else
             Table.RowCount(
                 Table.SelectRows(
-                    ExpandirFechaPadre,
-                    each [ESTADO_RUTA] = "ABIERTA"
+                    TablaRutas,
+                    each [ES_CICLO] = true
                 )
-            )
-        },
-        {"AMBIGUAS_CRONOLOGICAMENTE_CORRECTAS", AmbiguasCorrectas,
-            Table.RowCount(
-                Table.SelectRows(
-                    ExpandirFechaPadre,
-                    each [ESTADO_RUTA] = "ORDEN_TEMPORAL_AMBIGUO"
-                )
-            )
-        },
-        {"NO_VERIFICABLES_CORRECTAS", NoVerificablesCorrectas,
-            Table.RowCount(
-                Table.SelectRows(
-                    ExpandirFechaPadre,
-                    each [ESTADO_RUTA] = "SECUENCIA_TEMPORAL_NO_VERIFICABLE"
-                )
-            )
-        },
-        {"CICLOS_CORRECTOS", CiclosCorrectos,
-            Table.RowCount(
-                Table.SelectRows(
-                    ExpandirFechaPadre,
-                    each [ESTADO_RUTA] = "CICLO_DETECTADO"
-                )
-            )
-        }
-    },
+            ),
 
-    Tabla =
-        Table.FromRows(
-            Validaciones,
-            {"VALIDACION", "RESULTADO", "ESPERADO"}
+    Resumen =
+        #table(
+            {
+                "ESTADO_RUTA",
+                "CANTIDAD_RUTAS",
+                "OPERACIONES_DISTINTAS",
+                "PARTICIPANTES_INICIALES",
+                "PARTICIPANTES_DESTINO"
+            },
+            {
+                {
+                    "TOTAL_GENERAL",
+                    TotalRutas,
+                    TotalOperaciones,
+                    null,
+                    TotalParticipantes
+                },
+                {
+                    "TOTAL_CICLOS",
+                    TotalCiclos,
+                    null,
+                    null,
+                    null
+                }
+            }
         ),
 
-    AgregarEstado =
-        Table.AddColumn(
-            Tabla,
-            "ESTADO",
-            each
-                if [RESULTADO] = [ESPERADO] then
-                    "CORRECTO"
-                else
-                    "REVISAR",
-            type text
+    // 6. Unir el resumen de estados y totales
+    Resultado =
+        Table.Combine(
+            {
+                AgruparEstados,
+                Resumen
+            }
+        ),
+
+    Ordenar =
+        Table.Sort(
+            Resultado,
+            {
+                {"ESTADO_RUTA", Order.Ascending}
+            }
         )
 in
-    AgregarEstado
+    Ordenar
